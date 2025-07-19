@@ -14,6 +14,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
+import { createForecastJob, uploadFile } from "@/services/api";
 
 export default function UploadPage() {
     const [file, setFile] = useState<File | null>(null);
@@ -26,8 +27,10 @@ export default function UploadPage() {
         setError(null);
         if (!f) return;
 
+        console.log("Selected file:", f);
+
         // Validate file type
-        if (f.type !== "text/csv") {
+        if (f.type !== "application/vnd.ms-excel" && f.type !== "text/csv") {
             setError("Only CSV files are allowed.");
             return;
         }
@@ -50,12 +53,27 @@ export default function UploadPage() {
         setCsvPreview(rows);
     };
 
-    const handleSubmit = () => {
-        // Placeholder for actual upload logic
+    const handleSubmit = async () => {
         if (!file) return;
-        console.log("Uploading file:", file.name);
-        // Redirect to results page with dummy job ID
-        router.push("/results?jobId=dummy-1234");
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            const { fileId } = await uploadFile(formData);
+
+            const config = {
+                forecastPeriod: 30, // Example config; you can make this user-driven later
+                granularity: "daily",
+            };
+
+            const { jobId } = await createForecastJob(fileId, config);
+
+            router.push(`/results?jobId=${jobId}`);
+        } catch (err: any) {
+            setError("Upload failed. Please try again.");
+            console.error(err);
+        }
     };
 
     const handleReset = () => {
