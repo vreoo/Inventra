@@ -1,3 +1,7 @@
+## Global .gitignore
+
+*.csv
+
 ## Front-end Project .gitignore
 
 # dependencies
@@ -41,3 +45,8 @@ yarn-error.log*
 next-env.d.ts
 
 ## Back-end Project .gitignore
+backend/storage/*
+backend/venv/*
+
+# Logs
+backend/app.log
