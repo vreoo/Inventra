@@ -220,7 +220,7 @@ export default function UploadPage() {
     };
 
     return (
-        <main className="p-8 min-h-screen bg-white">
+        <main className="flex flex-col p-8 min-h-screen bg-white items-center justify-center">
             <h1 className="text-2xl font-bold mb-6">Upload Inventory CSV</h1>
 
             <div className="max-w-4xl space-y-6">
