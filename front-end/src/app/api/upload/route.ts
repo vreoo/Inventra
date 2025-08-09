@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { randomUUID } from "crypto";
 
-export const runtime = "edge"; // Optional: Use "nodejs" if using fs module
+export const runtime = "nodejs"; // Changed to nodejs to support crypto module
 
 export async function POST(req: Request) {
     try {
@@ -14,9 +13,10 @@ export async function POST(req: Request) {
         }
 
         // This is a placeholder — in real usage you'd use formidable, busboy, etc.
-        // But in Edge runtime, file parsing is limited.
+        // Now using nodejs runtime, so we can use crypto module.
         // So we simulate a file upload with a UUID.
 
+        const { randomUUID } = await import("crypto");
         const simulatedFileId = randomUUID();
 
         return NextResponse.json({ fileId: simulatedFileId });

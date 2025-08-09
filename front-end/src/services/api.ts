@@ -3,11 +3,11 @@ const API_BASE_URL = typeof window !== 'undefined'
     : "http://localhost:8000/api";
 
 export interface ForecastConfig {
-    model?: "AutoARIMA" | "ETS" | "SeasonalNaive" | "Naive" | "RandomWalkWithDrift";
+    model?: "AutoARIMA" | "AutoETS" | "SeasonalNaive" | "Naive" | "RandomWalkWithDrift";
     horizon?: number;
     frequency?: string;
     confidence_level?: number;
-    seasonal_length?: number;
+    seasonal_length?: number | null;
 }
 
 export interface UploadResponse {

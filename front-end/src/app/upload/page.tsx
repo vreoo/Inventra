@@ -14,8 +14,9 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { createForecastJob, uploadFile, UploadResponse } from "@/services/api";
+import { createForecastJob, uploadFile, UploadResponse, ForecastConfig } from "@/services/api";
 import { CheckCircle, AlertTriangle, XCircle, Calendar, Hash, Type, Eye, EyeOff, Info, HelpCircle } from "lucide-react";
+import ForecastSettings from "@/components/Settings/ForecastSettings";
 
 export default function UploadPage() {
     const [file, setFile] = useState<File | null>(null);
@@ -25,6 +26,8 @@ export default function UploadPage() {
     const [fileId, setFileId] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [showDetailedPreview, setShowDetailedPreview] = useState(false);
+    const [forecastConfig, setForecastConfig] = useState<ForecastConfig>({});
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const router = useRouter();
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -79,18 +82,17 @@ export default function UploadPage() {
     const handleSubmit = async () => {
         if (!fileId || !validationResult?.valid) return;
 
+        setIsSubmitting(true);
+        setError(null);
+
         try {
-            const config = {
-                horizon: 30, // Example config; you can make this user-driven later
-                frequency: "D",
-            };
-
-            const { jobId } = await createForecastJob(fileId, config);
-
+            const { jobId } = await createForecastJob(fileId, forecastConfig);
             router.push(`/results?jobId=${jobId}`);
         } catch (err: any) {
             setError("Failed to create forecast job. Please try again.");
             console.error(err);
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -235,12 +237,6 @@ export default function UploadPage() {
                         {isUploading && <p className="text-blue-500 text-sm">Processing file...</p>}
 
                         <div className="flex space-x-2">
-                            <Button 
-                                onClick={handleSubmit} 
-                                disabled={!file || !validationResult?.valid || isUploading}
-                            >
-                                {isUploading ? "Processing..." : "Create Forecast"}
-                            </Button>
                             <Button variant="secondary" onClick={handleReset}>
                                 Reset
                             </Button>
@@ -250,6 +246,14 @@ export default function UploadPage() {
 
                 {/* Validation Status */}
                 {renderValidationStatus()}
+
+                {/* Forecast Settings */}
+                <ForecastSettings
+                    validationResult={validationResult}
+                    onConfigChange={setForecastConfig}
+                    onSubmit={handleSubmit}
+                    isSubmitting={isSubmitting}
+                />
 
                 {/* Enhanced CSV Preview */}
                 {csvPreview.length > 0 && (

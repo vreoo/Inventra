@@ -100,7 +100,7 @@ class ForecastEngine:
         
         # Configure model parameters based on config
         model_params = {}
-        if config.seasonal_length and config.model in [ForecastModel.SEASONAL_NAIVE, ForecastModel.ETS]:
+        if config.seasonal_length and config.model in [ForecastModel.SEASONAL_NAIVE, ForecastModel.AUTO_ETS]:
             model_params['season_length'] = config.seasonal_length
         
         model = model_class(**model_params)
