@@ -16,7 +16,7 @@ class ForecastEngine:
     def __init__(self):
         self.model_mapping = {
             ForecastModel.AUTO_ARIMA: AutoARIMA,
-            ForecastModel.ETS: AutoETS,
+            ForecastModel.AUTO_ETS: AutoETS,
             ForecastModel.SEASONAL_NAIVE: SeasonalNaive,
             ForecastModel.NAIVE: Naive,
             ForecastModel.RANDOM_WALK_DRIFT: RandomWalkWithDrift

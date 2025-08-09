@@ -5,7 +5,7 @@ from enum import Enum
 
 class ForecastModel(str, Enum):
     AUTO_ARIMA = "AutoARIMA"
-    ETS = "ETS"
+    AUTO_ETS = "AutoETS"
     SEASONAL_NAIVE = "SeasonalNaive"
     NAIVE = "Naive"
     RANDOM_WALK_DRIFT = "RandomWalkWithDrift"
