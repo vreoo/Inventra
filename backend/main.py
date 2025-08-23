@@ -2,6 +2,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 import sys
+import os
+from pathlib import Path
+
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+        print("✅ Environment variables loaded from .env file")
+    else:
+        print("⚠️  .env file not found, using system environment variables")
+except ImportError:
+    print("⚠️  python-dotenv not installed, using system environment variables")
 
 from api import upload, forecast
 
@@ -25,7 +39,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],  # Frontend URLs
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001", "http://192.168.43.177:3000"],  # Frontend URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

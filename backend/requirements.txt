@@ -2,9 +2,18 @@ fastapi
 uvicorn[standard]
 pandas
 numpy
-statsforecast
+scikit-learn
 pydantic
 python-multipart
 python-jose[cryptography]
 passlib[bcrypt]
 aiofiles
+aiohttp
+holidays
+cachetools
+openai
+statsmodels
+python-dotenv
+# Pinned versions for compatibility with Python 3.13
+numba>=0.59.0
+llvmlite>=0.42.0

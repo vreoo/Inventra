@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { getForecastResult, ForecastResult } from "@/services/api";
 import { useSearchParams } from "next/navigation";
+import { ExternalFactors } from "@/components/Results/ExternalFactors";
+import { AIAnalysisComponent } from "@/components/Results/AIAnalysis";
 
 export default function ResultsPage() {
     const searchParams = useSearchParams();
@@ -16,12 +18,14 @@ export default function ResultsPage() {
         const interval = setInterval(async () => {
             try {
                 const response = await getForecastResult(jobId);
+                console.log("🔍 Forecast Response:", response); // Debug logging
                 setJobData(response);
-                
+
                 if (response.status === "COMPLETED" || response.status === "FAILED") {
                     clearInterval(interval);
                 }
             } catch (err: any) {
+                console.error("❌ Fetch error:", err); // Debug logging
                 setError("Failed to fetch forecast result");
                 clearInterval(interval);
             }
@@ -87,16 +91,16 @@ export default function ResultsPage() {
                                     </div>
                                 )}
                                 {result.reorder_point && (
-                                    <div className="bg-blue-50 p-4 rounded-md">
+                                <div className="bg-blue-50 p-4 rounded-md">
                                         <h3 className="font-medium text-blue-900">Reorder Point</h3>
                                         <p className="text-blue-800">{result.reorder_point.toFixed(1)} units</p>
-                                    </div>
+                                </div>
                                 )}
                                 {result.peak_season && (
-                                    <div className="bg-green-50 p-4 rounded-md">
+                                <div className="bg-green-50 p-4 rounded-md">
                                         <h3 className="font-medium text-green-900">Peak Season</h3>
                                         <p className="text-green-800">{result.peak_season}</p>
-                                    </div>
+                                </div>
                                 )}
                             </div>
 
@@ -128,7 +132,7 @@ export default function ResultsPage() {
                             )}
 
                             {/* Forecast Points Preview */}
-                            {result.forecast_points && result.forecast_points.length > 0 && (
+                            {result.forecast_points && result.forecast_points.length > 0 ? (
                                 <div className="mb-6">
                                     <h3 className="font-medium mb-3">Forecast Preview (Next 7 Days)</h3>
                                     <div className="overflow-x-auto">
@@ -145,7 +149,7 @@ export default function ResultsPage() {
                                                 {result.forecast_points.slice(0, 7).map((point, i) => (
                                                     <tr key={i} className="border-b">
                                                         <td className="py-2">{point.date}</td>
-                                                        <td className="py-2 font-mono">{point.forecast.toFixed(1)}</td>
+                                                        <td className="py-2 font-mono">{point.forecast?.toFixed(1) || '0.0'}</td>
                                                         <td className="py-2 font-mono">
                                                             {point.lower_bound ? point.lower_bound.toFixed(1) : "-"}
                                                         </td>
@@ -158,11 +162,17 @@ export default function ResultsPage() {
                                         </table>
                                     </div>
                                 </div>
+                            ) : (
+                                <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+                                    <p className="text-yellow-800 text-sm">
+                                        ⚠️ No forecast points available. The forecast may still be processing or encountered an error.
+                                    </p>
+                                </div>
                             )}
 
                             {/* Accuracy Metrics */}
                             {result.accuracy_metrics && (
-                                <div>
+                                <div className="mb-6">
                                     <h3 className="font-medium mb-3">Model Accuracy</h3>
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                         <div className="text-center p-3 bg-gray-50 rounded-md">
@@ -182,6 +192,81 @@ export default function ResultsPage() {
                                             <p className="text-sm">{result.model_used}</p>
                                         </div>
                                     </div>
+                                </div>
+                            )}
+
+                            {/* External Factors Analysis */}
+                            {result.external_factors_used && result.external_factors_used.length > 0 && (
+                                <div className="mb-6">
+                                    <h3 className="font-medium mb-3">External Factors Used</h3>
+                                    <div className="flex flex-wrap gap-2">
+                                        {result.external_factors_used.map((factor, i) => (
+                                            <span key={i} className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
+                                                {factor}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* AI Analysis Section */}
+                            {(result.ai_trend_explanation || result.ai_factor_summary || result.ai_recommendations || result.ai_risk_assessment) && (
+                                <div className="mb-6">
+                                    <h3 className="font-medium mb-3">AI Analysis</h3>
+                                    <div className="space-y-4">
+                                        {result.ai_trend_explanation && (
+                                            <div className="bg-blue-50 p-4 rounded-md">
+                                                <h4 className="font-medium text-blue-900 mb-2">Trend Explanation</h4>
+                                                <p className="text-blue-800 text-sm">{result.ai_trend_explanation}</p>
+                                            </div>
+                                        )}
+                                        {result.ai_factor_summary && (
+                                            <div className="bg-green-50 p-4 rounded-md">
+                                                <h4 className="font-medium text-green-900 mb-2">Factor Summary</h4>
+                                                <p className="text-green-800 text-sm">{result.ai_factor_summary}</p>
+                                            </div>
+                                        )}
+                                        {result.ai_recommendations && result.ai_recommendations.length > 0 && (
+                                            <div className="bg-purple-50 p-4 rounded-md">
+                                                <h4 className="font-medium text-purple-900 mb-2">AI Recommendations</h4>
+                                                <ul className="text-purple-800 text-sm space-y-1">
+                                                    {result.ai_recommendations.map((rec, i) => (
+                                                        <li key={i} className="flex items-start">
+                                                            <span className="mr-2">•</span>
+                                                            <span>{rec}</span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                        {result.ai_risk_assessment && (
+                                            <div className="bg-yellow-50 p-4 rounded-md">
+                                                <h4 className="font-medium text-yellow-900 mb-2">Risk Assessment</h4>
+                                                <p className="text-yellow-800 text-sm">{result.ai_risk_assessment}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Legacy AI Analysis (fallback) */}
+                            {result.ai_analysis && (
+                                <div className="mb-6">
+                                    <AIAnalysisComponent
+                                        analysis={result.ai_analysis}
+                                        dataQualityScore={result.data_quality_score}
+                                    />
+                                </div>
+                            )}
+
+                            {/* External Factors Analysis */}
+                            {result.external_factors && (
+                                <div className="mb-6">
+                                    <ExternalFactors
+                                        weatherData={result.external_factors.weather_data}
+                                        holidayData={result.external_factors.holiday_data}
+                                        factorAttributions={result.external_factors.factor_attributions}
+                                    />
                                 </div>
                             )}
                         </div>

@@ -3,8 +3,12 @@ import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import logging
-from statsforecast import StatsForecast
-from statsforecast.models import AutoARIMA, AutoETS, SeasonalNaive, Naive, RandomWalkWithDrift
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+import warnings
+warnings.filterwarnings('ignore')
+
 from models.forecast import (
     InventoryData, ForecastConfig, ForecastResult, ForecastPoint, 
     ForecastInsight, ForecastModel
@@ -15,11 +19,11 @@ logger = logging.getLogger(__name__)
 class ForecastEngine:
     def __init__(self):
         self.model_mapping = {
-            ForecastModel.AUTO_ARIMA: AutoARIMA,
-            ForecastModel.AUTO_ETS: AutoETS,
-            ForecastModel.SEASONAL_NAIVE: SeasonalNaive,
-            ForecastModel.NAIVE: Naive,
-            ForecastModel.RANDOM_WALK_DRIFT: RandomWalkWithDrift
+            ForecastModel.AUTO_ARIMA: self._arima_forecast,
+            ForecastModel.AUTO_ETS: self._ets_forecast,
+            ForecastModel.SEASONAL_NAIVE: self._seasonal_naive_forecast,
+            ForecastModel.NAIVE: self._naive_forecast,
+            ForecastModel.RANDOM_WALK_DRIFT: self._random_walk_drift_forecast
         }
     
     def generate_forecast(
@@ -95,43 +99,25 @@ class ForecastEngine:
         if len(df) < 3:
             raise ValueError(f"Insufficient data points for product {product_id}. Need at least 3 points.")
         
-        # Prepare model
-        model_class = self.model_mapping[config.model]
+        # Sort by date
+        df = df.sort_values('ds').reset_index(drop=True)
         
-        # Configure model parameters based on config
-        model_params = {}
-        if config.seasonal_length and config.model in [ForecastModel.SEASONAL_NAIVE, ForecastModel.AUTO_ETS]:
-            model_params['season_length'] = config.seasonal_length
-        
-        model = model_class(**model_params)
-        
-        # Create StatsForecast instance
-        sf = StatsForecast(
-            models=[model],
-            freq=config.frequency,
-            n_jobs=1
-        )
-        
-        # Generate forecast
-        forecast_df = sf.forecast(df=df, h=config.horizon, level=[int(config.confidence_level * 100)])
+        # Generate forecast using selected model
+        forecast_method = self.model_mapping[config.model]
+        forecast_values, confidence_intervals = forecast_method(df, config)
         
         # Convert forecast to ForecastPoint objects
         forecast_points = []
-        last_date = pd.to_datetime(product_data[-1].date)
+        last_date = df['ds'].iloc[-1]
         
-        for i, row in forecast_df.iterrows():
+        for i in range(config.horizon):
             forecast_date = last_date + timedelta(days=i+1)
-            
-            # Get confidence intervals if available
-            model_name = config.model.value
-            lower_col = f"{model_name}-lo-{int(config.confidence_level * 100)}"
-            upper_col = f"{model_name}-hi-{int(config.confidence_level * 100)}"
             
             point = ForecastPoint(
                 date=forecast_date.strftime("%Y-%m-%d"),
-                forecast=float(row[model_name]),
-                lower_bound=float(row[lower_col]) if lower_col in row else None,
-                upper_bound=float(row[upper_col]) if upper_col in row else None
+                forecast=float(forecast_values[i]),
+                lower_bound=float(confidence_intervals[i][0]) if confidence_intervals else None,
+                upper_bound=float(confidence_intervals[i][1]) if confidence_intervals else None
             )
             forecast_points.append(point)
         
@@ -161,6 +147,142 @@ class ForecastEngine:
             insights=insights,
             accuracy_metrics=accuracy_metrics
         )
+    
+    def _naive_forecast(self, df: pd.DataFrame, config: ForecastConfig) -> Tuple[np.ndarray, Optional[List[Tuple[float, float]]]]:
+        """Simple naive forecast - last value repeated"""
+        last_value = df['y'].iloc[-1]
+        forecast = np.full(config.horizon, last_value)
+        
+        # Simple confidence intervals based on historical variance
+        std = df['y'].std()
+        z_score = 1.96  # 95% confidence
+        margin = z_score * std
+        
+        confidence_intervals = [(last_value - margin, last_value + margin) for _ in range(config.horizon)]
+        
+        return forecast, confidence_intervals
+    
+    def _seasonal_naive_forecast(self, df: pd.DataFrame, config: ForecastConfig) -> Tuple[np.ndarray, Optional[List[Tuple[float, float]]]]:
+        """Seasonal naive forecast"""
+        season_length = config.seasonal_length or 7  # Default to weekly seasonality
+        
+        if len(df) < season_length:
+            return self._naive_forecast(df, config)
+        
+        # Use last season's values
+        seasonal_values = df['y'].iloc[-season_length:].values
+        forecast = np.tile(seasonal_values, (config.horizon // season_length) + 1)[:config.horizon]
+        
+        # Confidence intervals based on seasonal variance
+        seasonal_std = np.std(seasonal_values)
+        z_score = 1.96
+        margin = z_score * seasonal_std
+        
+        confidence_intervals = [(f - margin, f + margin) for f in forecast]
+        
+        return forecast, confidence_intervals
+    
+    def _random_walk_drift_forecast(self, df: pd.DataFrame, config: ForecastConfig) -> Tuple[np.ndarray, Optional[List[Tuple[float, float]]]]:
+        """Random walk with drift forecast"""
+        values = df['y'].values
+        
+        # Calculate drift (average change)
+        if len(values) > 1:
+            drift = np.mean(np.diff(values))
+        else:
+            drift = 0
+        
+        # Generate forecast
+        last_value = values[-1]
+        forecast = np.array([last_value + drift * (i + 1) for i in range(config.horizon)])
+        
+        # Confidence intervals
+        std = np.std(np.diff(values)) if len(values) > 1 else np.std(values)
+        z_score = 1.96
+        
+        confidence_intervals = []
+        for i in range(config.horizon):
+            margin = z_score * std * np.sqrt(i + 1)  # Increasing uncertainty over time
+            confidence_intervals.append((forecast[i] - margin, forecast[i] + margin))
+        
+        return forecast, confidence_intervals
+    
+    def _arima_forecast(self, df: pd.DataFrame, config: ForecastConfig) -> Tuple[np.ndarray, Optional[List[Tuple[float, float]]]]:
+        """ARIMA-like forecast using linear regression with polynomial features"""
+        values = df['y'].values
+        
+        # Create time features
+        X = np.arange(len(values)).reshape(-1, 1)
+        
+        # Use polynomial features to capture trends
+        poly_features = PolynomialFeatures(degree=min(2, len(values) - 1))
+        X_poly = poly_features.fit_transform(X)
+        
+        # Fit linear regression
+        model = LinearRegression()
+        model.fit(X_poly, values)
+        
+        # Generate forecast
+        future_X = np.arange(len(values), len(values) + config.horizon).reshape(-1, 1)
+        future_X_poly = poly_features.transform(future_X)
+        forecast = model.predict(future_X_poly)
+        
+        # Ensure non-negative forecasts
+        forecast = np.maximum(forecast, 0)
+        
+        # Calculate confidence intervals based on residuals
+        predictions = model.predict(X_poly)
+        residuals = values - predictions
+        std_residual = np.std(residuals)
+        z_score = 1.96
+        
+        confidence_intervals = []
+        for i, f in enumerate(forecast):
+            margin = z_score * std_residual * np.sqrt(1 + (i + 1) * 0.1)  # Increasing uncertainty
+            confidence_intervals.append((max(0, f - margin), f + margin))
+        
+        return forecast, confidence_intervals
+    
+    def _ets_forecast(self, df: pd.DataFrame, config: ForecastConfig) -> Tuple[np.ndarray, Optional[List[Tuple[float, float]]]]:
+        """Exponential smoothing forecast"""
+        values = df['y'].values
+        
+        # Simple exponential smoothing
+        alpha = 0.3  # Smoothing parameter
+        
+        # Initialize
+        smoothed = [values[0]]
+        
+        # Apply exponential smoothing
+        for i in range(1, len(values)):
+            smoothed.append(alpha * values[i] + (1 - alpha) * smoothed[-1])
+        
+        # Forecast
+        last_smoothed = smoothed[-1]
+        
+        # Add trend if data shows clear trend
+        if len(values) > 5:
+            recent_trend = np.mean(np.diff(values[-5:]))
+            trend_factor = 0.1  # Damping factor for trend
+        else:
+            recent_trend = 0
+            trend_factor = 0
+        
+        # Generate forecast with trend
+        forecast = np.array([last_smoothed + recent_trend * trend_factor * (i + 1) for i in range(config.horizon)])
+        forecast = np.maximum(forecast, 0)  # Ensure non-negative
+        
+        # Confidence intervals based on smoothing residuals
+        residuals = np.array([values[i] - smoothed[i] for i in range(len(values))])
+        std_residual = np.std(residuals)
+        z_score = 1.96
+        
+        confidence_intervals = []
+        for i, f in enumerate(forecast):
+            margin = z_score * std_residual * np.sqrt(1 + (i + 1) * 0.05)
+            confidence_intervals.append((max(0, f - margin), f + margin))
+        
+        return forecast, confidence_intervals
     
     def _generate_insights(
         self, 
@@ -320,35 +442,30 @@ class ForecastEngine:
             if len(test_df) < 3:
                 return None
             
-            # Prepare model
-            model_class = self.model_mapping[config.model]
-            model = model_class()
-            
-            sf = StatsForecast(
-                models=[model],
-                freq=config.frequency,
-                n_jobs=1
+            # Generate forecast for test period using the same method
+            forecast_method = self.model_mapping[config.model]
+            test_config = ForecastConfig(
+                model=config.model,
+                horizon=len(test_df),
+                frequency=config.frequency,
+                confidence_level=config.confidence_level,
+                seasonal_length=config.seasonal_length
             )
             
-            # Generate forecast for test period
-            forecast_df = sf.forecast(df=train_df, h=len(test_df))
+            predicted_values, _ = forecast_method(train_df, test_config)
+            actual_values = test_df['y'].values
             
             # Calculate metrics
-            actual = test_df['y'].values
-            predicted = forecast_df[config.model.value].values
-            
-            mae = np.mean(np.abs(actual - predicted))
-            mse = np.mean((actual - predicted) ** 2)
+            mae = mean_absolute_error(actual_values, predicted_values)
+            mse = mean_squared_error(actual_values, predicted_values)
             rmse = np.sqrt(mse)
             
             # Handle MAPE calculation with division by zero protection
-            # Only calculate MAPE for non-zero actual values
-            non_zero_mask = actual != 0
+            non_zero_mask = actual_values != 0
             if np.any(non_zero_mask):
-                mape_values = np.abs((actual[non_zero_mask] - predicted[non_zero_mask]) / actual[non_zero_mask])
+                mape_values = np.abs((actual_values[non_zero_mask] - predicted_values[non_zero_mask]) / actual_values[non_zero_mask])
                 mape = np.mean(mape_values) * 100
             else:
-                # If all actual values are zero, MAPE is undefined, use a large value or None
                 mape = None
             
             # Ensure all values are finite and JSON serializable
