@@ -2,27 +2,27 @@
 
 *.csv
 
-## Front-end Project .gitignore
+## frontend Project .gitignore
 
 # dependencies
-/front-end/node_modules
-/front-end/.pnp
-/front-end/.pnp.*
-/front-end/.yarn/*
+/frontend/node_modules
+/frontend/.pnp
+/frontend/.pnp.*
+/frontend/.yarn/*
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
 
 # testing
-/front-end/coverage
+/frontend/coverage
 
 # next.js
-/front-end/.next/
-/front-end/out/
+/frontend/.next/
+/frontend/out/
 
 # production
-/front-end/build
+/frontend/build
 
 # misc
 .DS_Store
