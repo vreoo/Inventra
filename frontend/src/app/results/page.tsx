@@ -5,7 +5,7 @@ import { getForecastResult, ForecastResult } from "@/services/api";
 import { useSearchParams } from "next/navigation";
 import { ExternalFactors } from "@/components/Results/ExternalFactors";
 import { AIAnalysisComponent } from "@/components/Results/AIAnalysis";
-import { Loading } from "@/components/ui/Loading";
+import { Loading } from "@/components/Results/Loading";
 
 export default function ResultsPage() {
     const searchParams = useSearchParams();
