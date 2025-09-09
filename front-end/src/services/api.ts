@@ -8,44 +8,6 @@ export interface ForecastConfig {
     frequency?: string;
     confidence_level?: number;
     seasonal_length?: number | null;
-    // Enterprise enhancement options
-    include_external_factors?: boolean;
-    enable_ai_analysis?: boolean;
-    location?: string;
-    country_code?: string;
-}
-
-// External factors data structures
-export interface WeatherData {
-    date: string;
-    temperature: number;
-    humidity: number;
-    precipitation: number;
-    wind_speed: number;
-    weather_condition: string;
-}
-
-export interface HolidayData {
-    date: string;
-    name: string;
-    type: "national" | "regional" | "religious" | "cultural";
-    impact_level: "low" | "medium" | "high";
-}
-
-export interface FactorAttribution {
-    factor_type: "weather" | "holiday" | "seasonal" | "trend";
-    factor_name: string;
-    impact_score: number;
-    confidence: number;
-    description: string;
-}
-
-export interface AIAnalysis {
-    trend_explanation: string;
-    factor_summary: string;
-    recommendations: string[];
-    risk_assessment: string;
-    confidence_score: number;
 }
 
 export interface UploadResponse {
@@ -102,26 +64,6 @@ export interface ForecastResult {
             RMSE: number;
             MAPE: number;
         };
-        // Enterprise enhancement data
-        external_factors_used?: string[];
-        factor_attributions?: FactorAttribution[];
-        weather_impact_summary?: string | null;
-        holiday_impact_summary?: string | null;
-        ai_trend_explanation?: string | null;
-        ai_factor_summary?: string | null;
-        ai_recommendations?: string[];
-        ai_risk_assessment?: string | null;
-        baseline_accuracy?: number | null;
-        enhanced_accuracy?: number | null;
-        accuracy_improvement?: number | null;
-        external_factor_confidence?: number;
-        external_factors?: {
-            weather_data?: WeatherData[];
-            holiday_data?: HolidayData[];
-            factor_attributions?: FactorAttribution[];
-        };
-        ai_analysis?: AIAnalysis;
-        data_quality_score?: number;
     }>;
     config?: ForecastConfig;
 }
