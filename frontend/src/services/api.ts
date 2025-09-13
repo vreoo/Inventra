@@ -1,9 +1,17 @@
-const API_BASE_URL = typeof window !== 'undefined' 
-    ? (window as any).ENV?.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api"
-    : "http://localhost:8000/api";
+const API_BASE_URL =
+    typeof window !== "undefined"
+        ? (window as any).ENV?.NEXT_PUBLIC_API_BASE_URL ||
+          "http://localhost:8000/api"
+        : "http://localhost:8000/api";
 
 export interface ForecastConfig {
-    model?: "AutoARIMA" | "AutoETS" | "SeasonalNaive" | "Naive" | "RandomWalkWithDrift";
+    model?:
+        | "AutoARIMA"
+        | "AutoETS"
+        | "SeasonalNaive"
+        | "Naive"
+        | "RandomWalkWithDrift"
+        | "SklearnModel";
     horizon?: number;
     frequency?: string;
     confidence_level?: number;
@@ -131,12 +139,14 @@ export async function uploadFile(formData: FormData): Promise<UploadResponse> {
         method: "POST",
         body: formData,
     });
-    
+
     if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ detail: "Failed to upload file" }));
+        const errorData = await res
+            .json()
+            .catch(() => ({ detail: "Failed to upload file" }));
         throw new Error(errorData.detail || "Failed to upload file");
     }
-    
+
     return res.json();
 }
 
@@ -149,7 +159,7 @@ export async function createForecastJob(
         horizon: 30,
         frequency: "D",
         confidence_level: 0.95,
-        ...config
+        ...config,
     };
 
     const res = await fetch(`${API_BASE_URL}/forecast`, {
@@ -157,33 +167,41 @@ export async function createForecastJob(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileId, config: defaultConfig }),
     });
-    
+
     if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ detail: "Failed to create forecast job" }));
+        const errorData = await res
+            .json()
+            .catch(() => ({ detail: "Failed to create forecast job" }));
         throw new Error(errorData.detail || "Failed to create forecast job");
     }
-    
+
     return res.json();
 }
 
-export async function getForecastResult(jobId: string): Promise<ForecastResult> {
+export async function getForecastResult(
+    jobId: string
+): Promise<ForecastResult> {
     const res = await fetch(`${API_BASE_URL}/forecast/${jobId}`);
-    
+
     if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ detail: "Failed to fetch forecast result" }));
+        const errorData = await res
+            .json()
+            .catch(() => ({ detail: "Failed to fetch forecast result" }));
         throw new Error(errorData.detail || "Failed to fetch forecast result");
     }
-    
+
     return res.json();
 }
 
-export async function validateFile(fileId: string): Promise<any> {
+export async function validateFile(fileId: string): Promise<UploadResponse> {
     const res = await fetch(`${API_BASE_URL}/upload/${fileId}/validate`);
-    
+
     if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ detail: "Failed to validate file" }));
+        const errorData = await res
+            .json()
+            .catch(() => ({ detail: "Failed to validate file" }));
         throw new Error(errorData.detail || "Failed to validate file");
     }
-    
+
     return res.json();
 }

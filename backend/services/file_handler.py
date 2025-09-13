@@ -67,39 +67,6 @@ class FileHandler:
             missing_data = df.isnull().sum()
             if missing_data.any():
                 validation_result["warnings"].append(f"Missing values detected: {missing_data[missing_data > 0].to_dict()}")
-
-                
-            required_columns = {
-                "date": False,
-                "quantity": False,
-                "promotion_flag": False,
-                "holiday_flag": False
-            }
-            
-            for col in df.columns:
-                col_lower = col.lower()
-                if any(keyword in col_lower for keyword in ["date", "time", "timestamp", "period"]):
-                    required_columns["date"] = True
-                elif any(keyword in col_lower for keyword in ["quantity", "stock", "inventory", "amount", "count", "units", "qty"]):
-                    required_columns["quantity"] = True
-                elif any(keyword in col_lower for keyword in ["promotion", "promo", "discount", "sale"]):
-                    required_columns["promotion_flag"] = True
-                elif any(keyword in col_lower for keyword in ["holiday", "holiday_flag", "is_holiday", "holiday_indicator"]):
-                    required_columns["holiday_flag"] = True
-            
-            missing_columns = [col for col, found in required_columns.items() if not found]
-            if missing_columns:
-                validation_result["valid"] = False
-                validation_result["errors"].append(f"Missing required columns: {', '.join(missing_columns)}")
-                
-            for col in df.columns:
-                col_lower = col.lower()
-                if any(keyword in col_lower for keyword in ["promotion", "promo", "holiday"]):
-                    valid_values = df[col].astype(str).str.lower().isin(['0', '1', 'true', 'false'])
-                    if not valid_values.all():
-                        validation_result["errors"].append(f"Column '{col}' must contain only boolean values (0/1 or true/false)")
-                        validation_result["valid"] = False
-
                         
             return validation_result
             
@@ -174,12 +141,10 @@ class FileHandler:
     def _detect_column_mapping(self, df: pd.DataFrame) -> Dict[str, str]:
         """Auto-detect column mappings based on column names and data types"""
         mapping = {
-            "date_col": datetime,
-            "quantity_col": int,
-            "product_col": str,
-            "product_name_col": str,
-            "promotion_flag_col": bool,
-            "holiday_flag_col": bool
+            "date_col": None,
+            "quantity_col": None,
+            "product_col": None,
+            "product_name_col": None
         }
         
         # Common date column names
@@ -187,8 +152,6 @@ class FileHandler:
         quantity_keywords = ["quantity", "stock", "inventory", "amount", "count", "units", "qty"]
         product_keywords = ["product", "item", "sku", "id"]
         name_keywords = ["name", "title", "description", "product_name", "item_name"]
-        promotion_keywords = ["promotion", "promo", "discount", "sale"]
-        holiday_keywords = ["holiday", "holiday_flag", "is_holiday", "holiday_indicator"]
         
         for col in df.columns:
             col_lower = col.lower()
@@ -220,16 +183,6 @@ class FileHandler:
             if not mapping["product_name_col"]:
                 if any(keyword in col_lower for keyword in name_keywords):
                     mapping["product_name_col"] = col
-                    continue
-            
-            if not mapping["promotion_flag_col"]:
-                if any(keyword in col_lower for keyword in promotion_keywords):
-                    mapping["promotion_flag_col"] = col
-                    continue
-            
-            if not mapping["holiday_flag_col"]:
-                if any(keyword in col_lower for keyword in holiday_keywords):
-                    mapping["holiday_flag_col"] = col
                     continue
         
         # Fallback: use first numeric column as quantity if not found

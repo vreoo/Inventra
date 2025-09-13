@@ -3,6 +3,7 @@ uvicorn[standard]
 pandas
 numpy
 statsforecast
+scikit-learn
 pydantic
 python-multipart
 python-jose[cryptography]

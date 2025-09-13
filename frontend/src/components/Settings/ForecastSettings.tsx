@@ -78,6 +78,16 @@ const USE_CASES = {
         confidence_level: 0.80,
         seasonal_length: null,
         frequency: "D"
+    },
+    ml_model: {
+        label: "Machine Learning",
+        description: "Scikit-learn based model for complex patterns",
+        icon: <Zap className="w-4 h-4" />,
+        model: "SklearnModel" as const,
+        horizon: 30,
+        confidence_level: 0.95,
+        seasonal_length: 7,
+        frequency: "D"
     }
 };
 
@@ -205,6 +215,9 @@ export default function ForecastSettings({
         if (dataPoints < 30) {
             recommendations.push("Consider simpler models due to limited data");
         }
+        if (dataPoints >= 60) {
+            recommendations.push("Machine learning models may capture complex patterns in your data");
+        }
 
         // Recommend use case based on analysis
         let recommendedUseCase: keyof typeof USE_CASES = 'stable';
@@ -216,6 +229,9 @@ export default function ForecastSettings({
             recommendedUseCase = 'trending';
         } else if (dataPoints >= 90) {
             recommendedUseCase = 'fast_moving';
+        } else if (dataPoints >= 60) {
+            // Recommend ML model for moderate to large datasets
+            recommendedUseCase = 'ml_model';
         }
 
         return {
@@ -406,6 +422,7 @@ export default function ForecastSettings({
                                             <SelectItem value="SeasonalNaive">Seasonal Naive (Simple)</SelectItem>
                                             <SelectItem value="Naive">Naive (Basic)</SelectItem>
                                             <SelectItem value="RandomWalkWithDrift">Random Walk (Trending)</SelectItem>
+                                            <SelectItem value="SklearnModel">Machine Learning (Sklearn)</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>

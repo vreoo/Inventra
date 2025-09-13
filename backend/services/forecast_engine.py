@@ -4,7 +4,9 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import logging
 from statsforecast import StatsForecast
-from statsforecast.models import AutoARIMA, AutoETS, SeasonalNaive, Naive, RandomWalkWithDrift
+from statsforecast.models import AutoARIMA, AutoETS, SeasonalNaive, Naive, RandomWalkWithDrift, SklearnModel
+from statsforecast.utils import ConformalIntervals
+from sklearn.linear_model import LinearRegression
 from models.forecast import (
     InventoryData, ForecastConfig, ForecastResult, ForecastPoint, 
     ForecastInsight, ForecastModel
@@ -19,7 +21,8 @@ class ForecastEngine:
             ForecastModel.AUTO_ETS: AutoETS,
             ForecastModel.SEASONAL_NAIVE: SeasonalNaive,
             ForecastModel.NAIVE: Naive,
-            ForecastModel.RANDOM_WALK_DRIFT: RandomWalkWithDrift
+            ForecastModel.RANDOM_WALK_DRIFT: RandomWalkWithDrift,
+            ForecastModel.SKLEARN_MODEL: SklearnModel
         }
     
     def generate_forecast(
@@ -98,12 +101,20 @@ class ForecastEngine:
         # Prepare model
         model_class = self.model_mapping[config.model]
         
-        # Configure model parameters based on config
-        model_params = {}
-        if config.seasonal_length and config.model in [ForecastModel.SEASONAL_NAIVE, ForecastModel.AUTO_ETS]:
-            model_params['season_length'] = config.seasonal_length
-        
-        model = model_class(**model_params)
+        # Special handling for SklearnModel which requires a sklearn estimator and exogenous variables
+        if config.model == ForecastModel.SKLEARN_MODEL:
+            # Using LinearRegression as a default sklearn model
+            # In a production environment, you might want to make this configurable
+            sklearn_model = LinearRegression()
+            # For now, we'll not use prediction intervals to avoid the data size issue
+            model = model_class(model=sklearn_model)
+        else:
+            # Configure model parameters based on config
+            model_params = {}
+            if config.seasonal_length and config.model in [ForecastModel.SEASONAL_NAIVE, ForecastModel.AUTO_ETS]:
+                model_params['season_length'] = config.seasonal_length
+            
+            model = model_class(**model_params)
         
         # Create StatsForecast instance
         sf = StatsForecast(
@@ -113,23 +124,47 @@ class ForecastEngine:
         )
         
         # Generate forecast
-        forecast_df = sf.forecast(df=df, h=config.horizon, level=[int(config.confidence_level * 100)])
+        # Special handling for SklearnModel which requires exogenous variables
+        if config.model == ForecastModel.SKLEARN_MODEL:
+            # Create exogenous variables for training data
+            # For now, we'll use simple time-based features
+            df['trend'] = range(len(df))
+            df['sin_t'] = np.sin(2 * np.pi * df['trend'] / 7)  # Weekly seasonality
+            df['cos_t'] = np.cos(2 * np.pi * df['trend'] / 7)  # Weekly seasonality
+            
+            # Create future exogenous variables for forecasting
+            future_dates = pd.date_range(start=df['ds'].max() + pd.Timedelta(days=1), periods=config.horizon, freq=config.frequency)
+            future_df = pd.DataFrame({'ds': future_dates, 'unique_id': product_id})
+            future_df['trend'] = range(len(df), len(df) + config.horizon)
+            future_df['sin_t'] = np.sin(2 * np.pi * future_df['trend'] / 7)  # Weekly seasonality
+            future_df['cos_t'] = np.cos(2 * np.pi * future_df['trend'] / 7)  # Weekly seasonality
+            
+            # Generate forecast with exogenous variables (without level for SklearnModel)
+            forecast_df = sf.forecast(df=df, h=config.horizon, X_df=future_df)
+        else:
+            forecast_df = sf.forecast(df=df, h=config.horizon, level=[int(config.confidence_level * 100)])
         
         # Convert forecast to ForecastPoint objects
         forecast_points = []
         last_date = pd.to_datetime(product_data[-1].date)
         
+        # Determine the model column name
+        if config.model == ForecastModel.SKLEARN_MODEL:
+            # For SklearnModel, the column name is the sklearn model class name
+            model_column_name = "LinearRegression"
+        else:
+            model_column_name = config.model.value
+        
         for i, row in forecast_df.iterrows():
             forecast_date = last_date + timedelta(days=i+1)
             
             # Get confidence intervals if available
-            model_name = config.model.value
-            lower_col = f"{model_name}-lo-{int(config.confidence_level * 100)}"
-            upper_col = f"{model_name}-hi-{int(config.confidence_level * 100)}"
+            lower_col = f"{model_column_name}-lo-{int(config.confidence_level * 100)}"
+            upper_col = f"{model_column_name}-hi-{int(config.confidence_level * 100)}"
             
             point = ForecastPoint(
                 date=forecast_date.strftime("%Y-%m-%d"),
-                forecast=float(row[model_name]),
+                forecast=float(row[model_column_name]),
                 lower_bound=float(row[lower_col]) if lower_col in row else None,
                 upper_bound=float(row[upper_col]) if upper_col in row else None
             )
@@ -322,7 +357,13 @@ class ForecastEngine:
             
             # Prepare model
             model_class = self.model_mapping[config.model]
-            model = model_class()
+            # Special handling for SklearnModel which requires a sklearn estimator
+            if config.model == ForecastModel.SKLEARN_MODEL:
+                # Using LinearRegression as a default sklearn model
+                sklearn_model = LinearRegression()
+                model = model_class(model=sklearn_model)
+            else:
+                model = model_class()
             
             sf = StatsForecast(
                 models=[model],
@@ -331,11 +372,32 @@ class ForecastEngine:
             )
             
             # Generate forecast for test period
-            forecast_df = sf.forecast(df=train_df, h=len(test_df))
+            # Special handling for SklearnModel which requires exogenous variables
+            if config.model == ForecastModel.SKLEARN_MODEL:
+                # Create exogenous variables for training data
+                train_df['trend'] = range(len(train_df))
+                train_df['sin_t'] = np.sin(2 * np.pi * train_df['trend'] / 7)  # Weekly seasonality
+                train_df['cos_t'] = np.cos(2 * np.pi * train_df['trend'] / 7)  # Weekly seasonality
+                
+                # Create future exogenous variables for forecasting
+                future_dates = pd.date_range(start=train_df['ds'].max() + pd.Timedelta(days=1), periods=len(test_df), freq=config.frequency)
+                future_df = pd.DataFrame({'ds': future_dates, 'unique_id': train_df['unique_id'].iloc[0]})
+                future_df['trend'] = range(len(train_df), len(train_df) + len(test_df))
+                future_df['sin_t'] = np.sin(2 * np.pi * future_df['trend'] / 7)  # Weekly seasonality
+                future_df['cos_t'] = np.cos(2 * np.pi * future_df['trend'] / 7)  # Weekly seasonality
+                
+                forecast_df = sf.forecast(df=train_df, h=len(test_df), X_df=future_df)
+            else:
+                forecast_df = sf.forecast(df=train_df, h=len(test_df))
             
             # Calculate metrics
             actual = test_df['y'].values
-            predicted = forecast_df[config.model.value].values
+            # Determine the model column name
+            if config.model == ForecastModel.SKLEARN_MODEL:
+                model_column_name = "LinearRegression"
+            else:
+                model_column_name = config.model.value
+            predicted = forecast_df[model_column_name].values
             
             mae = np.mean(np.abs(actual - predicted))
             mse = np.mean((actual - predicted) ** 2)

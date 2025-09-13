@@ -9,6 +9,7 @@ class ForecastModel(str, Enum):
     SEASONAL_NAIVE = "SeasonalNaive"
     NAIVE = "Naive"
     RANDOM_WALK_DRIFT = "RandomWalkWithDrift"
+    SKLEARN_MODEL = "SklearnModel"
 
 class ForecastConfig(BaseModel):
     model: ForecastModel = ForecastModel.AUTO_ARIMA
