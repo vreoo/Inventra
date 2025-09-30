@@ -43,7 +43,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${oswald.variable} ${poppins.variable} ${inter.variable} ${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${oswald.className} ${poppins.className} ${inter.className} ${geistSans.className} ${geistMono.className} antialiased`}
       >
         {children}
       </body>
