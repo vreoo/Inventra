@@ -4,12 +4,13 @@ A comprehensive inventory prediction system that utilizes traditional time serie
 
 ## Features
 
-- **Advanced Forecasting**: Uses StatsForecast library with multiple models (AutoARIMA, ETS, SeasonalNaive, etc.)
-- **Real-time Processing**: Background job processing for forecast generation
-- **Smart Data Validation**: Automatic CSV validation and column detection
-- **Comprehensive Insights**: Stockout predictions, reorder points, seasonal analysis
-- **Modern UI**: Next.js frontend with Tailwind CSS and shadcn/ui components
-- **RESTful API**: FastAPI backend with proper error handling and logging
+- **Demand-Driven Planning (New)**: Forecast demand, simulate depletion, and recommend reorder quantities with safety stock policies.
+- **Advanced Forecasting**: Uses StatsForecast library with multiple models (AutoARIMA, ETS, SeasonalNaive, Croston variants, optional TBATS).
+- **Real-time Processing**: Background job processing for forecast generation.
+- **Smart Data Validation**: Automatic CSV validation, column detection, coverage checks, and anomaly detection.
+- **Config Versioning**: Append-only configuration history with global and per-SKU overrides.
+- **Modern UI**: Next.js frontend featuring mapping wizard, policy controls, and enriched result visualisations.
+- **RESTful API**: FastAPI backend with structured logging and error handling.
 
 ## Architecture
 
@@ -55,12 +56,12 @@ The API will be available at `http://localhost:8000`
 
 1. Navigate to the frontend directory:
 ```bash
-cd front-end
+cd frontend
 ```
 
 2. Install dependencies:
 ```bash
-npm install
+pnpm install # or npm install / yarn install
 ```
 
 3. Start the development server:
@@ -70,52 +71,63 @@ npm run dev
 
 The frontend will be available at `http://localhost:3000`
 
+> **Feature flags**  
+> Demand planning is gated behind environment flags. Set `DEMAND_PLANNING_ENABLED=true` for the API and `NEXT_PUBLIC_DEMAND_PLANNING_ENABLED=true` for the frontend to expose the new workflow. Leave both false to continue using the legacy inventory mode.
+
 ## Usage
 
 ### 1. Prepare Your Data
 
-Create a CSV file with inventory data. The system automatically detects columns, but recommended format:
+Demand planning accepts a single CSV containing demand history, current stock, and lead times. Auto-mapping suggests columns, and you can override selections in the UI.
+
+**Recommended schema**
 
 ```csv
-date,product_id,quantity,product_name
-2024-01-01,PROD001,150,Widget A
-2024-01-02,PROD001,148,Widget A
-...
+date,sku,demand_units,on_hand,lead_time_days,product_name
+2024-10-01,SKU-100,42,320,7,Essential Widgets
+2024-10-02,SKU-100,38,320,7,Essential Widgets
 ```
 
-**Required columns:**
-- Date column (various formats supported)
-- Numeric quantity column
+- `date` (required): daily or weekly timestamps.
+- `demand_units` (required): quantity consumed or sold.
+- `sku` (optional, recommended): unique product identifier.
+- `on_hand` (optional): current inventory snapshot; defaults to 0 if missing.
+- `lead_time_days` (optional): SKU-specific lead time; defaults to global setting.
+- `product_name` (optional): label used in the UI.
 
-**Optional columns:**
-- Product ID for multi-product forecasting
-- Product name for better labeling
+A sample dataset is available at `sample_data/demand_planning_example.csv`.
 
 ### 2. Upload and Forecast
 
 1. Go to `http://localhost:3000`
-2. Upload your CSV file
-3. Review the data preview and validation results
-4. Click "Upload & Forecast" to start processing
+2. Choose demand or legacy inventory mode (demand planning requires enabling the feature flag).
+3. Upload your CSV file and review detected mappings, validation feedback, and policy settings.
+4. Adjust service-level, lead-time defaults, and safety stock rules if needed.
+5. Run the forecast to trigger background processing.
 
 ### 3. View Results
 
-The system provides:
-- **Stockout predictions**: When inventory will run out
-- **Reorder recommendations**: Optimal reorder points and dates
-- **Seasonal insights**: Peak demand periods
-- **Forecast accuracy**: Model performance metrics
-- **Detailed forecasts**: Daily predictions with confidence intervals
+Output includes:
+- **Demand forecast**: Time series with prediction intervals per SKU.
+- **Reorder simulation**: Recommended order date/quantity, reorder point, safety stock.
+- **Stock risk flags**: Projected stockout dates and service-level coverage.
+- **Validation summary**: Coverage metrics, anomalies, detected frequency.
+- **Legacy insights**: Inventory forecasts remain available via inventory mode.
 
 ## API Endpoints
 
 ### Upload
-- `POST /api/upload` - Upload CSV file
-- `GET /api/upload/{file_id}/validate` - Validate uploaded file
+- `POST /api/upload` — Upload CSV file, returns mapping + validation summary.
+- `GET /api/upload/{file_id}/validate` — Retrieve validation + mapping for existing upload.
 
 ### Forecasting
-- `POST /api/forecast` - Create forecast job
-- `GET /api/forecast/{job_id}` - Get job status and results
+- `POST /api/forecast` — Create a forecast job (supports `mode` + `mapping_overrides`).
+- `GET /api/forecast/{job_id}` — Get job status, results, and validation metadata.
+
+### Configuration
+- `GET /api/configs` — Fetch the latest merged configuration.
+- `POST /api/configs` — Append a versioned configuration update.
+- `GET /api/configs/history` — Stream historical configuration records.
 
 ### Health
 - `GET /` - API status

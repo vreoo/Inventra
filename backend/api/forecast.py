@@ -1,3 +1,5 @@
+import os
+
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from uuid import uuid4
 from pathlib import Path
@@ -6,9 +8,18 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from models.forecast import ForecastRequest, ForecastJob, JobStatus, ForecastConfig
+from models.forecast import (
+    ColumnMapping,
+    ForecastJob,
+    ForecastMode,
+    ForecastRequest,
+    JobStatus,
+    ValidationSummary,
+    ValidationAnomaly,
+)
 from services.file_handler import FileHandler
 from services.forecast_engine import ForecastEngine
+from services.demand_engine import DemandPlanningEngine
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +28,15 @@ router = APIRouter()
 JOBS_DIR = Path("storage/jobs")
 JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
+DEFAULT_SCHEMA_VERSION = "1.0.0"
+DEMAND_PLANNING_ENABLED = (
+    os.getenv("DEMAND_PLANNING_ENABLED", "true").lower() == "true"
+)
+
 # Initialize services
 file_handler = FileHandler()
 forecast_engine = ForecastEngine()
+demand_engine = DemandPlanningEngine()
 
 @router.post("/forecast")
 async def create_forecast_job(req: ForecastRequest, background_tasks: BackgroundTasks):
@@ -28,7 +45,87 @@ async def create_forecast_job(req: ForecastRequest, background_tasks: Background
         # Validate file exists
         if not file_handler.file_exists(req.fileId):
             raise HTTPException(status_code=404, detail="File not found")
-        
+        metadata = file_handler.get_upload_metadata(req.fileId) or {}
+
+        base_mapping = metadata.get("mapping") or {}
+        mapping = ColumnMapping(**base_mapping) if base_mapping else ColumnMapping()
+        if req.mapping_overrides:
+            overrides = {
+                key: value
+                for key, value in req.mapping_overrides.dict(
+                    exclude_unset=True, exclude_none=True
+                ).items()
+                if value
+            }
+            for key, value in overrides.items():
+                setattr(mapping, key, value)
+
+        mode = req.mode
+        metadata_mode = metadata.get("mode")
+        if metadata_mode:
+            try:
+                mode = ForecastMode(metadata_mode)
+            except ValueError:
+                logger.warning("Unknown mode '%s' in metadata for file %s", metadata_mode, req.fileId)
+
+        if mode == ForecastMode.DEMAND and not DEMAND_PLANNING_ENABLED:
+            raise HTTPException(
+                status_code=403,
+                detail="Demand planning is disabled on this environment.",
+            )
+
+        schema_version = (
+            req.schema_version
+            or metadata.get("schema_version")
+            or DEFAULT_SCHEMA_VERSION
+        )
+
+        validation_summary = None
+        if metadata.get("validation_summary"):
+            summary_dict = metadata["validation_summary"]
+            anomalies = [
+                ValidationAnomaly(**anomaly)
+                for anomaly in summary_dict.get("anomalies", [])
+            ]
+            validation_summary = ValidationSummary(
+                rows=summary_dict.get("rows", 0),
+                columns=summary_dict.get("columns", []),
+                detected_frequency=summary_dict.get("detected_frequency"),
+                date_coverage_pct=summary_dict.get("date_coverage_pct"),
+                missing_by_field=summary_dict.get("missing_by_field", {}),
+                anomalies=anomalies,
+            )
+        else:
+            file_path = file_handler.get_file_path(req.fileId)
+            validation_result = file_handler.validate_csv_file(file_path, mode)
+            summary_dict = validation_result.get("summary") or {}
+            anomalies = [
+                ValidationAnomaly(**anomaly)
+                for anomaly in summary_dict.get("anomalies", [])
+            ]
+            validation_summary = ValidationSummary(
+                rows=summary_dict.get("rows", validation_result.get("info", {}).get("rows", 0)),
+                columns=summary_dict.get("columns", validation_result.get("info", {}).get("columns", [])),
+                detected_frequency=summary_dict.get("detected_frequency"),
+                date_coverage_pct=summary_dict.get("date_coverage_pct"),
+                missing_by_field=summary_dict.get("missing_by_field", {}),
+                anomalies=anomalies,
+            )
+
+        if mode == ForecastMode.DEMAND and (not mapping.date or not mapping.demand):
+            raise HTTPException(
+                status_code=400,
+                detail="Demand mode requires mapped date and demand columns.",
+            )
+
+        config = req.config
+        if (
+            validation_summary
+            and validation_summary.detected_frequency
+            and validation_summary.detected_frequency != config.frequency
+        ):
+            config.frequency = validation_summary.detected_frequency
+
         # Create job
         job_id = str(uuid4())
         job = ForecastJob(
@@ -36,7 +133,11 @@ async def create_forecast_job(req: ForecastRequest, background_tasks: Background
             fileId=req.fileId,
             status=JobStatus.PENDING,
             created_at=datetime.now(),
-            config=req.config
+            config=config,
+            mode=mode,
+            schema_version=schema_version,
+            mapping=mapping,
+            validation=validation_summary,
         )
         
         # Save job to storage
@@ -90,14 +191,50 @@ async def process_forecast_job(job_id: str):
         with job_file.open("w") as f:
             json.dump(job.dict(), f, default=str)
         
-        # Process the file
-        file_path = file_handler.get_file_path(job.fileId)
-        inventory_data, processing_info = file_handler.process_inventory_data(file_path)
-        
-        logger.info(f"Processing {len(inventory_data)} inventory records for job {job_id}")
-        
-        # Generate forecast
-        results = forecast_engine.generate_forecast(inventory_data, job.config)
+        if job.mode == ForecastMode.DEMAND:
+            metadata = file_handler.get_upload_metadata(job.fileId) or {}
+            mapping_dict = metadata.get("mapping") or {}
+            mapping = job.mapping or ColumnMapping(**mapping_dict)
+
+            artifacts = file_handler.prepare_demand_artifacts(
+                job.fileId,
+                mapping,
+                job.config,
+            )
+
+            logger.info(
+                "Processing demand planning for %s with %d rows",
+                job.fileId,
+                len(artifacts.demand_df),
+            )
+
+            results = demand_engine.generate(
+                artifacts=artifacts,
+                config=job.config,
+                schema_version=job.schema_version,
+            )
+
+            job.validation = artifacts.validation
+            job.mapping = mapping
+            if (
+                artifacts.validation.detected_frequency
+                and job.config
+                and artifacts.validation.detected_frequency != job.config.frequency
+            ):
+                job.config.frequency = artifacts.validation.detected_frequency
+        else:
+            file_path = file_handler.get_file_path(job.fileId)
+            inventory_data, _ = file_handler.process_inventory_data(
+                file_path, job.mapping
+            )
+
+            logger.info(
+                "Processing %d inventory records for job %s",
+                len(inventory_data),
+                job_id,
+            )
+
+            results = forecast_engine.generate_forecast(inventory_data, job.config)
         
         # Update job with results
         job.status = JobStatus.COMPLETED
