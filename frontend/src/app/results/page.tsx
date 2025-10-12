@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { getForecastResult, ForecastResult } from "@/services/api";
 import { useSearchParams } from "next/navigation";
 import { ExternalFactors } from "@/components/Results/ExternalFactors";
@@ -32,7 +32,7 @@ const FORECAST_RANGE_OPTIONS: Array<{
   { label: "Max", value: "max" },
 ];
 
-export default function ResultsPage() {
+function ResultsPageContent() {
   const searchParams = useSearchParams();
   const jobId = searchParams.get("jobId");
   const [jobData, setJobData] = useState<ForecastResult | null>(null);
@@ -688,5 +688,13 @@ export default function ResultsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ResultsPage() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <ResultsPageContent />
+    </Suspense>
   );
 }
