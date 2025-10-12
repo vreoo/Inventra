@@ -6,11 +6,30 @@ type EnvWindow = Window & {
 
 const DEFAULT_API_BASE_URL = "http://localhost:8000/api";
 
-const API_BASE_URL =
-  typeof window !== "undefined"
-    ? (window as EnvWindow).ENV?.NEXT_PUBLIC_API_BASE_URL ??
-      DEFAULT_API_BASE_URL
-    : DEFAULT_API_BASE_URL;
+const resolveEnvApiBaseUrl = (): string | undefined => {
+  const buildTimeValue = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (buildTimeValue && buildTimeValue.trim().length > 0) {
+    return buildTimeValue;
+  }
+
+  if (typeof window !== "undefined") {
+    const runtimeValue = (window as EnvWindow).ENV?.NEXT_PUBLIC_API_BASE_URL;
+    if (runtimeValue && runtimeValue.trim().length > 0) {
+      return runtimeValue;
+    }
+  }
+
+  return undefined;
+};
+
+const normalizeApiBaseUrl = (rawUrl: string): string => {
+  const trimmed = rawUrl.replace(/\/+$/, "");
+  return /\/api(?:\/|$)/.test(trimmed) ? trimmed : `${trimmed}/api`;
+};
+
+const API_BASE_URL = normalizeApiBaseUrl(
+  resolveEnvApiBaseUrl() ?? DEFAULT_API_BASE_URL
+);
 
 export type ForecastMode = "inventory" | "demand";
 
