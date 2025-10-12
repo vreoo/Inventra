@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 import sys
 
-from api import upload, forecast
+from api import upload, forecast, config
 
 # Configure logging
 logging.basicConfig(
@@ -33,6 +33,7 @@ app.add_middleware(
 
 app.include_router(upload.router, prefix="/api", tags=["upload"])
 app.include_router(forecast.router, prefix="/api", tags=["forecast"])
+app.include_router(config.router, prefix="/api", tags=["config"])
 
 @app.get("/")
 async def root():
