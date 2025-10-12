@@ -86,22 +86,22 @@ export default function Home() {
       <TargetCursor spinDuration={4} hideDefaultCursor={true} />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),_transparent_60%)]" />
       <div className="pointer-events-none absolute -top-72 left-1/2 h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,_rgba(56,189,248,0.25)_0,_transparent_65%)] blur-3xl" />
-      <div className="relative mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 pb-24 pt-10 sm:px-12">
-        <header className="sticky top-6 z-50">
-          <div
-            className={cn(
-              "flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/[0.04] px-6 py-4 text-sm text-slate-300 backdrop-blur",
-              "transition-all duration-500",
-              hasScrolled ? "shadow-lg shadow-slate-950/40" : "shadow-none"
-            )}
-          >
-            <Link
-              href="/"
-              className="cursor-target text-xl font-semibold tracking-tight text-white"
+      <div className="mx-auto flex  max-w-6xl flex-col px-6 pb-24 pt-10 ">
+        <header>
+          <nav className="sticky top-0 z-50 flex flex-wrap items-center gap-6 bg-slate-950/70 backdrop-blur px-6 py-4">
+            <div
+              className={cn(
+                "flex flex-wrap items-center justify-between w-full gap-4 rounded-2xl border border-white/10 bg-white/[0.04] px-6 py-4 text-sm text-slate-300 backdrop-blur",
+                "transition-all duration-500",
+                hasScrolled ? "shadow-lg shadow-slate-950/40" : "shadow-none"
+              )}
             >
-              Inventra
-            </Link>
-            <nav className="flex items-center gap-6">
+              <Link
+                href="/"
+                className="cursor-target text-xl font-semibold tracking-tight text-white"
+              >
+                Inventra
+              </Link>
               <a
                 href="#features"
                 className="cursor-target transition-colors hover:text-white"
@@ -122,10 +122,9 @@ export default function Home() {
               >
                 <Link href="/upload">Upload</Link>
               </Button>
-            </nav>
-          </div>
+            </div>
+          </nav>
         </header>
-
         <section className="mt-20 grid gap-12 lg:grid-cols-[1.1fr,0.9fr] lg:items-center">
           <div className="space-y-7">
             <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-slate-300">

@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import logging
 from statsforecast import StatsForecast
 from statsforecast.models import AutoARIMA, AutoETS, SeasonalNaive, Naive, RandomWalkWithDrift, SklearnModel
-from statsforecast.utils import ConformalIntervals
 from sklearn.linear_model import LinearRegression
 from models.forecast import (
     InventoryData, ForecastConfig, ForecastResult, ForecastPoint, 

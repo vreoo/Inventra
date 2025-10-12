@@ -13,7 +13,7 @@ class ForecastModel(str, Enum):
 
 class ForecastConfig(BaseModel):
     model: ForecastModel = ForecastModel.AUTO_ARIMA
-    horizon: int = Field(default=30, ge=1, le=365, description="Forecast horizon in days")
+    horizon: int = Field(default=90, ge=1, le=365, description="Forecast horizon in days")
     frequency: str = Field(default="D", description="Data frequency (D=daily, W=weekly, M=monthly)")
     confidence_level: float = Field(default=0.95, ge=0.5, le=0.99)
     seasonal_length: Optional[int] = Field(default=None, description="Seasonal period length")
