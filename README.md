@@ -97,6 +97,18 @@ date,sku,demand_units,on_hand,lead_time_days,product_name
 
 A sample dataset is available at `sample_data/demand_planning_example.csv`.
 
+#### Generate Larger Demo Data Sets
+
+- Run `python3 sample_data/generate_demand_planning_data.py` to create a synthetic CSV with two years of daily history across 25 SKUs (`sample_data/demand_planning_synthetic.csv`, ~18k rows).
+- Adjust parameters such as `--sku-count`, `--start-date`, `--end-date`, and `--promo-probability` to scale up volume or dial different demand patterns. Example:
+  ```bash
+  python3 sample_data/generate_demand_planning_data.py \
+    --sku-count 80 \
+    --end-date 2026-12-31 \
+    --output sample_data/big_demo.csv
+  ```
+- The script models weekly + annual seasonality, trends, random noise, and promotional lifts so the validation and anomaly detection views remain interesting during demos.
+
 ### 2. Upload and Forecast
 
 1. Go to `http://localhost:3000`
@@ -150,7 +162,17 @@ Output includes:
 
 ## Sample Data
 
-A sample CSV file (`sample_inventory_data.csv`) is included in the root directory for testing.
+- `sample_data/demand_planning_example.csv`: minimal walkthrough dataset that matches the recommended schema.
+- `sample_data/demand_planning_synthetic.csv`: generated via the script above; two years of daily history for 25 SKUs.
+- `sample_data/sample_inventory_data.csv`: legacy inventory example used by the original flow.
+- Synthetic generator: `python3 sample_data/generate_demand_planning_data.py --help` lists all switches for crafting custom demo sets (lead time ranges, safety stock buffer, promo lifts, etc.).
+- Real-world demand sources (Kaggle):
+  - **M5 Forecasting - Accuracy** — retail demand with calendar events for Walmart.
+  - **Corporación Favorita Grocery Sales Forecasting** — Ecuador grocery chain with hierarchical SKUs.
+  - **Rossmann Store Sales** — promotional effects across pharmacies.
+  - **Demand Forecasting for Walmart** — tidy daily demand for select items.
+
+> Most Kaggle datasets omit explicit lead times/on-hand counts. Pair them with the synthetic generator to backfill missing fields or craft hybrid demo inputs.
 
 ## Development
 
