@@ -48,5 +48,10 @@ next-env.d.ts
 backend/storage/*
 backend/venv/*
 
+
+backend/**/__pycache__/
+**/__pycache__/
+__pycache__/
+
 # Logs
 backend/app.log

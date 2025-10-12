@@ -4,7 +4,23 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timedelta
 import logging
 from statsforecast import StatsForecast
-from statsforecast.models import AutoARIMA, AutoETS, SeasonalNaive, Naive, RandomWalkWithDrift, SklearnModel
+from statsforecast.models import (
+    AutoARIMA,
+    AutoETS,
+    SeasonalNaive,
+    Naive,
+    RandomWalkWithDrift,
+    SklearnModel,
+    CrostonClassic,
+    CrostonOptimized,
+    CrostonSBA,
+)
+try:
+    from statsforecast.models import TBATS as StatsForecastTBATS
+
+    HAS_TBATS = True
+except Exception:  # pragma: no cover - optional dependency
+    HAS_TBATS = False
 from sklearn.linear_model import LinearRegression
 from models.forecast import (
     InventoryData, ForecastConfig, ForecastResult, ForecastPoint, 
@@ -21,8 +37,15 @@ class ForecastEngine:
             ForecastModel.SEASONAL_NAIVE: SeasonalNaive,
             ForecastModel.NAIVE: Naive,
             ForecastModel.RANDOM_WALK_DRIFT: RandomWalkWithDrift,
-            ForecastModel.SKLEARN_MODEL: SklearnModel
+            ForecastModel.SKLEARN_MODEL: SklearnModel,
+            ForecastModel.CROSTON_CLASSIC: CrostonClassic,
+            ForecastModel.CROSTON_OPTIMIZED: CrostonOptimized,
+            ForecastModel.CROSTON_SBA: CrostonSBA,
         }
+        if HAS_TBATS:
+            self.model_mapping[ForecastModel.TBATS] = StatsForecastTBATS
+        else:
+            self.model_mapping[ForecastModel.TBATS] = AutoETS
     
     def generate_forecast(
         self, 
@@ -98,8 +121,8 @@ class ForecastEngine:
             raise ValueError(f"Insufficient data points for product {product_id}. Need at least 3 points.")
         
         # Prepare model
-        model_class = self.model_mapping[config.model]
-        
+        model_class = self.model_mapping.get(config.model, AutoARIMA)
+
         # Special handling for SklearnModel which requires a sklearn estimator and exogenous variables
         if config.model == ForecastModel.SKLEARN_MODEL:
             # Using LinearRegression as a default sklearn model
@@ -107,13 +130,31 @@ class ForecastEngine:
             sklearn_model = LinearRegression()
             # For now, we'll not use prediction intervals to avoid the data size issue
             model = model_class(model=sklearn_model)
+        elif config.model == ForecastModel.TBATS and HAS_TBATS:
+            seasonal_periods = []
+            if config.frequency == "D":
+                seasonal_periods = [7, 30]
+            elif config.frequency == "W":
+                seasonal_periods = [52]
+            elif config.frequency == "M":
+                seasonal_periods = [12]
+            if config.seasonal_length:
+                seasonal_periods.append(config.seasonal_length)
+            seasonal_periods = seasonal_periods or [7]
+            model = model_class(seasonal_periods=seasonal_periods)
         else:
             # Configure model parameters based on config
             model_params = {}
-            if config.seasonal_length and config.model in [ForecastModel.SEASONAL_NAIVE, ForecastModel.AUTO_ETS]:
+            if config.seasonal_length and config.model in [
+                ForecastModel.SEASONAL_NAIVE,
+                ForecastModel.AUTO_ETS,
+            ]:
                 model_params['season_length'] = config.seasonal_length
             
             model = model_class(**model_params)
+
+        if hasattr(model, "alias"):
+            model.alias = config.model.value
         
         # Create StatsForecast instance
         sf = StatsForecast(
@@ -142,6 +183,8 @@ class ForecastEngine:
             forecast_df = sf.forecast(df=df, h=config.horizon, X_df=future_df)
         else:
             forecast_df = sf.forecast(df=df, h=config.horizon, level=[int(config.confidence_level * 100)])
+        
+        forecast_df = self._flatten_forecast_columns(forecast_df)
         
         # Convert forecast to ForecastPoint objects
         forecast_points = []
@@ -363,6 +406,9 @@ class ForecastEngine:
                 model = model_class(model=sklearn_model)
             else:
                 model = model_class()
+
+            if hasattr(model, "alias"):
+                model.alias = config.model.value
             
             sf = StatsForecast(
                 models=[model],
@@ -388,6 +434,8 @@ class ForecastEngine:
                 forecast_df = sf.forecast(df=train_df, h=len(test_df), X_df=future_df)
             else:
                 forecast_df = sf.forecast(df=train_df, h=len(test_df))
+            
+            forecast_df = self._flatten_forecast_columns(forecast_df)
             
             # Calculate metrics
             actual = test_df['y'].values
@@ -425,3 +473,22 @@ class ForecastEngine:
         except Exception as e:
             logger.warning(f"Could not calculate accuracy metrics: {str(e)}")
             return None
+
+    def _flatten_forecast_columns(self, forecast_df: pd.DataFrame) -> pd.DataFrame:
+        """Normalize StatsForecast output to use flat column names."""
+        if isinstance(forecast_df.columns, pd.MultiIndex):
+            flattened = []
+            for col in forecast_df.columns:
+                if not isinstance(col, tuple):
+                    flattened.append(col)
+                    continue
+                parts = [str(level) for level in col if level not in (None, "",)]
+                if parts and parts[0] == "mean":
+                    # Revert StatsForecast mean column naming when model name is missing
+                    parts = ["mean"]
+                if len(parts) > 1 and parts[1].lower() == "mean":
+                    parts = [parts[0]]
+                flattened.append("-".join(parts))
+            forecast_df = forecast_df.copy()
+            forecast_df.columns = flattened
+        return forecast_df
