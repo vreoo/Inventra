@@ -1,8 +1,16 @@
+type EnvWindow = Window & {
+  ENV?: {
+    NEXT_PUBLIC_API_BASE_URL?: string;
+  };
+};
+
+const DEFAULT_API_BASE_URL = "http://localhost:8000/api";
+
 const API_BASE_URL =
   typeof window !== "undefined"
-    ? (window as unknown).ENV?.NEXT_PUBLIC_API_BASE_URL ||
-      "http://localhost:8000/api"
-    : "http://localhost:8000/api";
+    ? (window as EnvWindow).ENV?.NEXT_PUBLIC_API_BASE_URL ??
+      DEFAULT_API_BASE_URL
+    : DEFAULT_API_BASE_URL;
 
 export type ForecastMode = "inventory" | "demand";
 
@@ -61,6 +69,28 @@ export interface UploadResponse {
   mapping?: ColumnMapping;
   summary?: ValidationSummary;
   uploaded_at?: string;
+}
+
+interface UploadResponseLike {
+  validation?: UploadValidation;
+  valid?: unknown;
+  errors?: unknown;
+  warnings?: unknown;
+  info?: Partial<UploadValidationInfo>;
+  rows?: unknown;
+  columns?: unknown;
+  date_columns?: unknown;
+  numeric_columns?: unknown;
+  text_columns?: unknown;
+  summary?: ValidationSummary;
+  validation_summary?: ValidationSummary;
+  mapping?: ColumnMapping;
+  fileId?: unknown;
+  filename?: unknown;
+  mode?: ForecastMode;
+  schema_version?: string;
+  uploaded_at?: unknown;
+  [key: string]: unknown;
 }
 
 export interface ForecastConfig {
@@ -229,35 +259,89 @@ export interface ConfigUpdatePayload {
 const DEFAULT_UPLOAD_SCHEMA = "1.0.0";
 
 function normalizeUploadResponse(data: unknown): UploadResponse {
-  const validation: UploadValidation = data.validation
-    ? data.validation
+  if (typeof data !== "object" || data === null) {
+    throw new Error("Unexpected upload response payload");
+  }
+
+  const payload = data as UploadResponseLike;
+
+  const normalizeStringArray = (value: unknown): string[] =>
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string")
+      : [];
+
+  const info: UploadValidationInfo = {
+    rows:
+      typeof payload.info?.rows === "number"
+        ? payload.info.rows
+        : typeof payload.rows === "number"
+        ? payload.rows
+        : 0,
+    columns: normalizeStringArray(payload.info?.columns ?? payload.columns),
+    date_columns: normalizeStringArray(
+      payload.info?.date_columns ?? payload.date_columns
+    ),
+    numeric_columns: normalizeStringArray(
+      payload.info?.numeric_columns ?? payload.numeric_columns
+    ),
+    text_columns: normalizeStringArray(
+      payload.info?.text_columns ?? payload.text_columns
+    ),
+    detected_frequency: payload.info?.detected_frequency,
+    date_coverage_pct: payload.info?.date_coverage_pct,
+    missing_by_field: payload.info?.missing_by_field,
+    anomalies: payload.info?.anomalies as ValidationAnomaly[] | undefined,
+  };
+
+  const validation: UploadValidation = payload.validation
+    ? payload.validation
     : {
-        valid: data.valid ?? true,
-        errors: data.errors ?? [],
-        warnings: data.warnings ?? [],
-        info: data.info ?? {
-          rows: data.rows ?? 0,
-          columns: data.columns ?? [],
-          date_columns: data.date_columns ?? [],
-          numeric_columns: data.numeric_columns ?? [],
-          text_columns: data.text_columns ?? [],
-        },
+        valid: typeof payload.valid === "boolean" ? payload.valid : true,
+        errors: normalizeStringArray(payload.errors),
+        warnings: normalizeStringArray(payload.warnings),
+        info,
       };
 
   const summary: ValidationSummary | undefined =
-    data.summary || data.validation_summary || validation.info?.summary;
+    payload.summary ||
+    payload.validation_summary ||
+    (
+      validation.info as UploadValidationInfo & {
+        summary?: ValidationSummary;
+      }
+    )?.summary;
 
-  const mapping: ColumnMapping | undefined = data.mapping || validation.mapping;
+  const mapping: ColumnMapping | undefined =
+    payload.mapping ||
+    (
+      validation as UploadValidation & {
+        mapping?: ColumnMapping;
+        info?: UploadValidationInfo & { mapping?: ColumnMapping };
+      }
+    ).mapping ||
+    (
+      validation.info as UploadValidationInfo & {
+        mapping?: ColumnMapping;
+      }
+    )?.mapping;
+
+  if (
+    typeof payload.fileId !== "string" ||
+    typeof payload.filename !== "string"
+  ) {
+    throw new Error("Upload response missing file metadata");
+  }
 
   return {
-    fileId: data.fileId,
-    filename: data.filename,
-    mode: data.mode,
-    schema_version: data.schema_version,
+    fileId: payload.fileId,
+    filename: payload.filename,
+    mode: payload.mode,
+    schema_version: payload.schema_version,
     validation,
     mapping,
     summary,
-    uploaded_at: data.uploaded_at,
+    uploaded_at:
+      typeof payload.uploaded_at === "string" ? payload.uploaded_at : undefined,
   };
 }
 
