@@ -35,7 +35,7 @@ def resolve_allowed_origins(raw_value: str | None) -> List[str]:
     for chunk in raw_value.replace("\n", ",").split(","):
         entry = chunk.strip()
         if entry:
-            candidates.append(entry)
+            candidates.append(entry.rstrip("/"))
 
     return candidates or DEFAULT_ALLOWED_ORIGINS
 
@@ -61,11 +61,9 @@ if allowed_origin_regex:
 else:
     cors_kwargs["allow_origins"] = allowed_origins
 
-logger.info(
-    "Configuring CORS with origins=%s regex=%s",
-    cors_kwargs.get("allow_origins"),
-    cors_kwargs.get("allow_origin_regex"),
-)
+logger.info("Configuring CORS")
+logger.info(" - allow_origins=%s", cors_kwargs.get("allow_origins"))
+logger.info(" - allow_origin_regex=%s", cors_kwargs.get("allow_origin_regex"))
 
 app.add_middleware(CORSMiddleware, **cors_kwargs)
 
