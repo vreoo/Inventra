@@ -299,7 +299,7 @@ export default function UploadPage() {
             </div>
           )}
 
-          <div className="grid gap-4 text-sm md:grid-cols-3">
+          <div className="grid gap-4 text-sm sm:grid-cols-2 md:grid-cols-3">
             <div>
               <span className="font-medium">Rows:</span>{" "}
               {validationResult.info.rows}
@@ -351,7 +351,7 @@ export default function UploadPage() {
             selections can be overridden at any time before generating the
             forecast.
           </p>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             {MAPPING_FIELDS.map((field) => {
               const value = selectedMappingValue(field.key) ?? "";
               const missing = field.required && !value;
@@ -407,7 +407,7 @@ export default function UploadPage() {
           Service Level & Policies
         </CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-4 md:grid-cols-2">
+      <CardContent className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1">
           <Label htmlFor="service-level">Target service level</Label>
           <Input
@@ -479,7 +479,7 @@ export default function UploadPage() {
     if (csvPreview.length === 0) return null;
     return (
       <Card>
-        <CardHeader className="flex items-center justify-between">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Preview</CardTitle>
           <Button
             variant="ghost"
@@ -498,30 +498,32 @@ export default function UploadPage() {
           </Button>
         </CardHeader>
         {showDetailedPreview && (
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {csvPreview[0]?.map((header, idx) => (
-                    <TableHead key={idx}>
-                      <div className="flex items-center gap-2">
-                        {getColumnTypeIcon(header)}
-                        <span>{header}</span>
-                      </div>
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {csvPreview.slice(1).map((row, rowIndex) => (
-                  <TableRow key={rowIndex}>
-                    {row.map((cell, cellIndex) => (
-                      <TableCell key={cellIndex}>{cell}</TableCell>
+          <CardContent className="space-y-4">
+            <div className="w-full overflow-x-auto">
+              <Table className="min-w-[560px]">
+                <TableHeader>
+                  <TableRow>
+                    {csvPreview[0]?.map((header, idx) => (
+                      <TableHead key={idx}>
+                        <div className="flex items-center gap-2">
+                          {getColumnTypeIcon(header)}
+                          <span>{header}</span>
+                        </div>
+                      </TableHead>
                     ))}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {csvPreview.slice(1).map((row, rowIndex) => (
+                    <TableRow key={rowIndex}>
+                      {row.map((cell, cellIndex) => (
+                        <TableCell key={cellIndex}>{cell}</TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         )}
       </Card>
@@ -531,8 +533,8 @@ export default function UploadPage() {
   const canSubmit = Boolean(fileId && validationResult?.valid && !isSubmitting);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Demand Planning Upload</h1>
           <p className="text-sm text-muted-foreground">
@@ -542,7 +544,7 @@ export default function UploadPage() {
           </p>
         </div>
         {demandPlanningEnabled ? (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               variant={mode === "demand" ? "default" : "outline"}
               size="sm"
@@ -614,14 +616,14 @@ export default function UploadPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between border-t border-dashed border-gray-200 pt-4">
+      <div className="flex flex-col gap-4 border-t border-dashed border-gray-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="text-xs text-muted-foreground">
           Mode: <span className="font-medium text-foreground">{mode}</span>
           {schemaVersion && (
             <span className="ml-2">Schema {schemaVersion}</span>
           )}
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row">
           <Button
             variant="outline"
             onClick={handleReset}

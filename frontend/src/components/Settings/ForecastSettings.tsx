@@ -315,7 +315,7 @@ export default function ForecastSettings({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-blue-600">
                   {dataInsights.dataPoints}
@@ -370,7 +370,7 @@ export default function ForecastSettings({
       {/* Main Settings */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="flex items-center gap-2">
               <Settings className="w-5 h-5" />
               Forecast Configuration
@@ -401,7 +401,7 @@ export default function ForecastSettings({
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {Object.entries(USE_CASES).map(([key, useCase]) => (
                   <div
                     key={key}
@@ -590,7 +590,7 @@ export default function ForecastSettings({
                 Current Configuration
               </span>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <span className="text-gray-500">Model:</span>
                 <div className="font-medium">{config.model}</div>
