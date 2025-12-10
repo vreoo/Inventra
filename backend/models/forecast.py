@@ -31,6 +31,9 @@ class ForecastConfig(BaseModel):
     safety_stock_policy: str = Field(default="ss_z_score", description="Safety stock policy identifier")
     reorder_policy: str = Field(default="continuous_review", description="Reorder policy identifier")
     enable_tbats: bool = Field(default=False, description="Attempt TBATS model when dependency available")
+    enable_ai_summary: Optional[bool] = Field(
+        default=None, description="Toggle AI-generated summaries for forecast results"
+    )
 
 class InventoryData(BaseModel):
     date: str
@@ -103,6 +106,11 @@ class ForecastResult(BaseModel):
     starting_inventory: Optional[float] = None
     demand_frequency: Optional[str] = None
     schema_version: Optional[str] = None
+    ai_summary: Optional[str] = None
+    ai_actions: Optional[List[str]] = None
+    ai_risks: Optional[List[str]] = None
+    ai_source: Optional[str] = None
+    ai_generated_at: Optional[datetime] = None
 
 class JobStatus(str, Enum):
     PENDING = "PENDING"

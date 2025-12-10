@@ -133,13 +133,11 @@ export interface ForecastConfig {
   safety_stock_policy?: string;
   reorder_policy?: string;
   enable_tbats?: boolean;
-  include_external_factors?: boolean;
-  enable_ai_analysis?: boolean;
+  enable_ai_summary?: boolean;
   location?: string;
   country_code?: string;
 }
 
-// External factors data structures (retained for future use)
 export interface WeatherData {
   date: string;
   temperature: number;
@@ -162,14 +160,6 @@ export interface FactorAttribution {
   impact_score: number;
   confidence: number;
   description: string;
-}
-
-export interface AIAnalysis {
-  trend_explanation: string;
-  factor_summary: string;
-  recommendations: string[];
-  risk_assessment: string;
-  confidence_score: number;
 }
 
 export interface ForecastSeries {
@@ -198,6 +188,8 @@ export interface ForecastSeries {
     MSE?: number | null;
     RMSE?: number | null;
     MAPE?: number | null;
+    WAPE?: number | null;
+    sMAPE?: number | null;
   };
   safety_stock?: number | null;
   recommended_order_qty?: number | null;
@@ -207,13 +199,11 @@ export interface ForecastSeries {
   demand_frequency?: string | null;
   schema_version?: string | null;
   external_factors_used?: string[];
-  factor_attributions?: FactorAttribution[];
-  weather_impact_summary?: string | null;
-  holiday_impact_summary?: string | null;
-  ai_trend_explanation?: string | null;
-  ai_factor_summary?: string | null;
-  ai_recommendations?: string[];
-  ai_risk_assessment?: string | null;
+  ai_summary?: string | null;
+  ai_actions?: string[] | null;
+  ai_risks?: string[] | null;
+  ai_source?: string | null;
+  ai_generated_at?: string | null;
   baseline_accuracy?: number | null;
   enhanced_accuracy?: number | null;
   accuracy_improvement?: number | null;
@@ -223,8 +213,6 @@ export interface ForecastSeries {
     holiday_data?: HolidayData[];
     factor_attributions?: FactorAttribution[];
   };
-  ai_analysis?: AIAnalysis;
-  data_quality_score?: number;
 }
 
 export interface ForecastResult {
@@ -414,7 +402,7 @@ export async function createForecastJob(
   const bodyPayload = {
     fileId,
     config: defaultConfig,
-    mode: options.mode ?? "inventory",
+    mode: options.mode ?? "demand",
     schema_version: options.schemaVersion,
     mapping_overrides: options.mappingOverrides ?? undefined,
   };

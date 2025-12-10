@@ -4,8 +4,8 @@ import { Suspense, useEffect, useState } from "react";
 import { getForecastResult, ForecastResult } from "@/services/api";
 import { useSearchParams } from "next/navigation";
 import { ExternalFactors } from "@/components/Results/ExternalFactors";
-import { AIAnalysisComponent } from "@/components/Results/AIAnalysis";
 import { Loading } from "@/components/Results/Loading";
+import { AiSummaryCard } from "@/components/Results/AiSummaryCard";
 import {
   CartesianGrid,
   Legend,
@@ -150,6 +150,8 @@ function ResultsPageContent() {
   if (!jobData) {
     return <Loading />;
   }
+
+  const aiSummaryEnabled = Boolean(jobData.config?.enable_ai_summary);
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
@@ -337,6 +339,16 @@ function ResultsPageContent() {
                     )}
                   </div>
                 )}
+
+                <AiSummaryCard
+                  summary={result.ai_summary}
+                  actions={result.ai_actions}
+                  risks={result.ai_risks}
+                  source={result.ai_source}
+                  generatedAt={result.ai_generated_at}
+                  featureEnabled={aiSummaryEnabled}
+                  skuLabel={result.product_name || result.product_id || "this SKU"}
+                />
 
                 {/* Insights */}
                 {result.insights && result.insights.length > 0 && (
@@ -540,28 +552,58 @@ function ResultsPageContent() {
                 {result.accuracy_metrics && (
                   <div className="mb-6">
                     <h3 className="font-medium mb-3">Model Accuracy</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="text-center p-3 bg-gray-50 rounded-md">
-                        <p className="text-xs text-gray-600">MAE</p>
-                        <p className="font-mono text-sm">
-                          {result.accuracy_metrics.MAE?.toFixed(2) ?? "-"}
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                    <div className="text-center p-3 bg-gray-50 rounded-md">
+                      <p className="text-xs text-gray-600">MAE</p>
+                      <p className="font-mono text-sm">
+                        {result.accuracy_metrics?.MAE?.toFixed(2) ?? "-"}
+                      </p>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        Avg absolute units off (lower is better)
+                      </p>
+                    </div>
+                    <div className="text-center p-3 bg-gray-50 rounded-md">
+                      <p className="text-xs text-gray-600">RMSE</p>
+                      <p className="font-mono text-sm">
+                        {result.accuracy_metrics?.RMSE?.toFixed(2) ?? "-"}
+                      </p>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        Penalizes big misses more than MAE
+                      </p>
+                    </div>
+                    <div className="text-center p-3 bg-gray-50 rounded-md">
+                      <p className="text-xs text-gray-600">MAPE</p>
+                      <p className="font-mono text-sm">
+                        {result.accuracy_metrics?.MAPE?.toFixed(1)}%
+                      </p>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        Avg percent error where actual ≠ 0
+                      </p>
+                    </div>
+                    <div className="text-center p-3 bg-gray-50 rounded-md">
+                      <p className="text-xs text-gray-600">WAPE</p>
+                      <p className="font-mono text-sm">
+                        {result.accuracy_metrics?.WAPE?.toFixed(1)}%
+                      </p>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        Weighted avg percent error (stable even with zeros)
+                      </p>
+                    </div>
+                    <div className="text-center p-3 bg-gray-50 rounded-md">
+                      <p className="text-xs text-gray-600">sMAPE</p>
+                      <p className="font-mono text-sm">
+                        {result.accuracy_metrics?.sMAPE?.toFixed(1)}%
+                      </p>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        Symmetric percent error; balances over/under
+                      </p>
+                    </div>
+                    <div className="text-center p-3 bg-gray-50 rounded-md">
+                      <p className="text-xs text-gray-600">Model</p>
+                      <p className="text-sm">{result.model_used}</p>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        Algorithm used for this SKU
                         </p>
-                      </div>
-                      <div className="text-center p-3 bg-gray-50 rounded-md">
-                        <p className="text-xs text-gray-600">RMSE</p>
-                        <p className="font-mono text-sm">
-                          {result.accuracy_metrics.RMSE?.toFixed(2) ?? "-"}
-                        </p>
-                      </div>
-                      <div className="text-center p-3 bg-gray-50 rounded-md">
-                        <p className="text-xs text-gray-600">MAPE</p>
-                        <p className="font-mono text-sm">
-                          {result.accuracy_metrics.MAPE?.toFixed(1)}%
-                        </p>
-                      </div>
-                      <div className="text-center p-3 bg-gray-50 rounded-md">
-                        <p className="text-xs text-gray-600">Model</p>
-                        <p className="text-sm">{result.model_used}</p>
                       </div>
                     </div>
                   </div>
@@ -586,74 +628,6 @@ function ResultsPageContent() {
                       </div>
                     </div>
                   )}
-
-                {/* AI Analysis Section */}
-                {(result.ai_trend_explanation ||
-                  result.ai_factor_summary ||
-                  result.ai_recommendations ||
-                  result.ai_risk_assessment) && (
-                  <div className="mb-6">
-                    <h3 className="font-medium mb-3">AI Analysis</h3>
-                    <div className="space-y-4">
-                      {result.ai_trend_explanation && (
-                        <div className="bg-blue-50 p-4 rounded-md">
-                          <h4 className="font-medium text-blue-900 mb-2">
-                            Trend Explanation
-                          </h4>
-                          <p className="text-blue-800 text-sm">
-                            {result.ai_trend_explanation}
-                          </p>
-                        </div>
-                      )}
-                      {result.ai_factor_summary && (
-                        <div className="bg-green-50 p-4 rounded-md">
-                          <h4 className="font-medium text-green-900 mb-2">
-                            Factor Summary
-                          </h4>
-                          <p className="text-green-800 text-sm">
-                            {result.ai_factor_summary}
-                          </p>
-                        </div>
-                      )}
-                      {result.ai_recommendations &&
-                        result.ai_recommendations.length > 0 && (
-                          <div className="bg-purple-50 p-4 rounded-md">
-                            <h4 className="font-medium text-purple-900 mb-2">
-                              AI Recommendations
-                            </h4>
-                            <ul className="text-purple-800 text-sm space-y-1">
-                              {result.ai_recommendations.map((rec, i) => (
-                                <li key={i} className="flex items-start">
-                                  <span className="mr-2">•</span>
-                                  <span>{rec}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      {result.ai_risk_assessment && (
-                        <div className="bg-yellow-50 p-4 rounded-md">
-                          <h4 className="font-medium text-yellow-900 mb-2">
-                            Risk Assessment
-                          </h4>
-                          <p className="text-yellow-800 text-sm">
-                            {result.ai_risk_assessment}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Legacy AI Analysis (fallback) */}
-                {result.ai_analysis && (
-                  <div className="mb-6">
-                    <AIAnalysisComponent
-                      analysis={result.ai_analysis}
-                      dataQualityScore={result.data_quality_score}
-                    />
-                  </div>
-                )}
 
                 {/* External Factors Analysis */}
                 {result.external_factors && (

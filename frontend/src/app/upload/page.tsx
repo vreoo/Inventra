@@ -33,7 +33,6 @@ import {
   Eye,
   EyeOff,
   Info,
-  HelpCircle,
   Target,
 } from "lucide-react";
 import ForecastSettings from "@/components/Settings/ForecastSettings";
@@ -82,11 +81,7 @@ const MAPPING_FIELDS: Array<{
 ];
 
 export default function UploadPage() {
-  const demandPlanningEnabled =
-    process.env.NEXT_PUBLIC_DEMAND_PLANNING_ENABLED === "true";
-  const defaultMode: ForecastMode = demandPlanningEnabled
-    ? "demand"
-    : "inventory";
+  const defaultMode: ForecastMode = "demand";
 
   const router = useRouter();
 
@@ -538,36 +533,12 @@ export default function UploadPage() {
         <div>
           <h1 className="text-2xl font-semibold">Demand Planning Upload</h1>
           <p className="text-sm text-muted-foreground">
-            Provide demand history, on-hand inventory, and lead times to
-            forecast reorder needs. Legacy inventory forecasts remain available
-            via the inventory mode.
+            Provide demand history, on-hand inventory, and lead times to forecast reorder needs.
           </p>
         </div>
-        {demandPlanningEnabled ? (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant={mode === "demand" ? "default" : "outline"}
-              size="sm"
-              disabled={Boolean(fileId)}
-              onClick={() => setMode("demand")}
-            >
-              Demand planning
-            </Button>
-            <Button
-              variant={mode === "inventory" ? "default" : "outline"}
-              size="sm"
-              disabled={Boolean(fileId)}
-              onClick={() => setMode("inventory")}
-            >
-              Inventory (legacy)
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <HelpCircle className="h-4 w-4" />
-            Demand planning beta is disabled; running inventory forecasts.
-          </div>
-        )}
+        <div className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-800">
+          Demand mode enabled
+        </div>
       </div>
 
       <Card>
