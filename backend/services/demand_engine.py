@@ -16,6 +16,7 @@ from statsforecast.models import (
     Naive,
     SeasonalNaive,
 )
+from statsforecast.utils import ConformalIntervals
 
 from models.forecast import (
     ForecastConfig,
@@ -156,9 +157,17 @@ class DemandPlanningEngine:
             sku_df, exog_df, artifacts.frequency
         )
 
-        model = self._select_model(sku_df, artifacts, config)
+        model = self._select_model(prepared_df, artifacts, config)
         freq = artifacts.frequency
         level = [int(config.confidence_level * 100)]
+        if getattr(model, "only_conformal_intervals", False) and getattr(
+            model, "prediction_intervals", None
+        ) is None:
+            logger.info(
+                "Skipping prediction intervals for SKU %s (insufficient history for conformal intervals)",
+                sku,
+            )
+            level = None
         sf = StatsForecast(models=[model], freq=freq, n_jobs=1)
 
         train_df = prepared_df
@@ -280,7 +289,11 @@ class DemandPlanningEngine:
                 "Detected intermittent demand for SKU %s -> CrostonClassic",
                 sku_df["unique_id"].iloc[0],
             )
-            return CrostonClassic()
+            pi = self._build_conformal_intervals(len(sku_df), config.horizon)
+            model = CrostonClassic(prediction_intervals=pi)
+            if hasattr(model, "alias"):
+                model.alias = model.__class__.__name__
+            return model
 
         model_class = _MODEL_MAP.get(desired, AutoARIMA)
         model_kwargs: Dict[str, int] = {}
@@ -291,6 +304,10 @@ class DemandPlanningEngine:
                 model_kwargs["season_length"] = 12
             elif config.seasonal_length:
                 model_kwargs["season_length"] = config.seasonal_length
+        if model_class in {CrostonClassic, CrostonOptimized, CrostonSBA}:
+            model_kwargs["prediction_intervals"] = self._build_conformal_intervals(
+                len(sku_df), config.horizon
+            )
 
         model_instance = model_class(**model_kwargs)
         if hasattr(model_instance, "alias"):
@@ -313,6 +330,25 @@ class DemandPlanningEngine:
         if freq == "M":
             return [12]
         return [7]
+
+    def _build_conformal_intervals(
+        self, series_length: int, horizon: Optional[int]
+    ) -> Optional[ConformalIntervals]:
+        """Return conformal interval settings when there is enough history to compute them."""
+        if horizon is None:
+            return None
+        try:
+            horizon_int = int(horizon)
+        except (TypeError, ValueError):
+            return None
+        horizon_int = max(horizon_int, 1)
+        max_windows = series_length // horizon_int
+        if max_windows < 2:
+            return None
+        return ConformalIntervals(
+            n_windows=min(max_windows, 5),
+            h=horizon_int,
+        )
 
     def _calculate_demand_stats(
         self,
