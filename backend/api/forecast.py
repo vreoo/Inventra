@@ -1,12 +1,14 @@
+import csv
+import io
 import os
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Query
 from uuid import uuid4
 from pathlib import Path
 import json
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any, List
 
 from models.forecast import (
     ColumnMapping,
@@ -17,6 +19,7 @@ from models.forecast import (
     ValidationSummary,
     ValidationAnomaly,
 )
+from fastapi.responses import StreamingResponse
 from services.ai_summarizer import AiSummaryService
 from services.file_handler import FileHandler
 from services.demand_engine import DemandPlanningEngine
@@ -76,6 +79,91 @@ def get_ai_summary_service() -> Optional[AiSummaryService]:
         AI_SUMMARY_FALLBACK_MODELS or "none",
     )
     return _ai_summary_service
+
+
+def _load_job(job_id: str) -> Dict[str, Any]:
+    job_file = JOBS_DIR / f"{job_id}.json"
+    if not job_file.exists():
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    with job_file.open("r") as f:
+        return json.load(f)
+
+
+def _format_number(value: Any, precision: Optional[int] = None) -> str:
+    if value is None:
+        return ""
+    try:
+        if precision is not None:
+            return f"{float(value):.{precision}f}"
+        return str(value)
+    except Exception:
+        return str(value)
+
+
+def _build_orders_rows(job_data: Dict[str, Any]) -> List[List[str]]:
+    results = job_data.get("results") or []
+    rows: List[List[str]] = []
+    for result in results:
+        mode = result.get("mode") or job_data.get("mode") or ""
+        rows.append(
+            [
+                result.get("product_id") or "",
+                result.get("product_name") or "",
+                mode,
+                result.get("demand_frequency") or "",
+                result.get("reorder_date") or "",
+                _format_number(result.get("recommended_order_qty"), 2),
+                _format_number(result.get("reorder_point"), 2),
+                _format_number(result.get("safety_stock"), 2),
+                result.get("stockout_date") or "",
+                _format_number(result.get("starting_inventory"), 2),
+                _format_number(result.get("lead_time_days")),
+                _format_number(result.get("service_level"), 3),
+                result.get("model_used") or "",
+                result.get("schema_version")
+                or job_data.get("schema_version")
+                or "",
+                result.get("ai_summary") or "",
+            ]
+        )
+    return rows
+
+
+def _build_forecast_rows(job_data: Dict[str, Any]) -> List[List[str]]:
+    results = job_data.get("results") or []
+    rows: List[List[str]] = []
+    for result in results:
+        mode = result.get("mode") or job_data.get("mode") or ""
+        points = result.get("forecast_points") or []
+        if not points:
+            continue
+        for point in points:
+            rows.append(
+                [
+                    result.get("product_id") or "",
+                    result.get("product_name") or "",
+                    mode,
+                    result.get("demand_frequency") or "",
+                    point.get("date") or "",
+                    _format_number(point.get("forecast"), 4),
+                    _format_number(point.get("lower_bound"), 4),
+                    _format_number(point.get("upper_bound"), 4),
+                    result.get("reorder_date") or "",
+                    _format_number(result.get("reorder_point"), 2),
+                    _format_number(result.get("recommended_order_qty"), 2),
+                    _format_number(result.get("safety_stock"), 2),
+                    result.get("stockout_date") or "",
+                    _format_number(result.get("starting_inventory"), 2),
+                    _format_number(result.get("lead_time_days")),
+                    _format_number(result.get("service_level"), 3),
+                    result.get("model_used") or "",
+                    result.get("schema_version")
+                    or job_data.get("schema_version")
+                    or "",
+                ]
+            )
+    return rows
 
 @router.post("/forecast")
 async def create_forecast_job(req: ForecastRequest, background_tasks: BackgroundTasks):
@@ -214,6 +302,83 @@ async def get_forecast_status(job_id: str):
     except Exception as e:
         logger.error(f"Error getting forecast status: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.get("/forecast/{job_id}/export")
+async def export_forecast_csv(
+    job_id: str,
+    kind: str = Query(
+        default="orders",
+        description="Export view: 'orders' (one row per SKU) or 'forecast' (one row per date per SKU).",
+        regex="^(orders|forecast)$",
+    ),
+):
+    """Stream forecast results as CSV for downloads."""
+    job_data = _load_job(job_id)
+    status = job_data.get("status")
+    if status != JobStatus.COMPLETED.value:
+        raise HTTPException(status_code=400, detail="Job is not completed yet.")
+
+    results = job_data.get("results") or []
+    if not results:
+        raise HTTPException(status_code=404, detail="No results available for export.")
+
+    if kind == "forecast":
+        headers = [
+            "product_id",
+            "product_name",
+            "mode",
+            "demand_frequency",
+            "date",
+            "forecast",
+            "lower_bound",
+            "upper_bound",
+            "reorder_date",
+            "reorder_point",
+            "recommended_order_qty",
+            "safety_stock",
+            "stockout_date",
+            "starting_inventory",
+            "lead_time_days",
+            "service_level",
+            "model_used",
+            "schema_version",
+        ]
+        rows = _build_forecast_rows(job_data)
+    else:
+        headers = [
+            "product_id",
+            "product_name",
+            "mode",
+            "demand_frequency",
+            "reorder_date",
+            "recommended_order_qty",
+            "reorder_point",
+            "safety_stock",
+            "stockout_date",
+            "starting_inventory",
+            "lead_time_days",
+            "service_level",
+            "model_used",
+            "schema_version",
+            "ai_summary",
+        ]
+        rows = _build_orders_rows(job_data)
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="Nothing to export for this job.")
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    buffer.seek(0)
+
+    filename = f"forecast-{job_id}-{kind}.csv"
+    return StreamingResponse(
+        iter([buffer.getvalue().encode("utf-8")]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 async def process_forecast_job(job_id: str):
     """Background task to process forecast job"""

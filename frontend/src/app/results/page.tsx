@@ -1,7 +1,12 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { getForecastResult, ForecastResult } from "@/services/api";
+import {
+  exportForecast,
+  ExportKind,
+  getForecastResult,
+  ForecastResult,
+} from "@/services/api";
 import { useSearchParams } from "next/navigation";
 import { ExternalFactors } from "@/components/Results/ExternalFactors";
 import { Loading } from "@/components/Results/Loading";
@@ -44,6 +49,8 @@ function ResultsPageContent() {
   const [forecastViewSelections, setForecastViewSelections] = useState<
     Record<string, ForecastViewMode>
   >({});
+  const [exportingKind, setExportingKind] = useState<ExportKind | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!jobId) return;
@@ -152,10 +159,74 @@ function ResultsPageContent() {
   }
 
   const aiSummaryEnabled = Boolean(jobData.config?.enable_ai_summary);
+  const canExport =
+    jobData.status === "COMPLETED" &&
+    Array.isArray(jobData.results) &&
+    jobData.results.length > 0;
+
+  const triggerDownload = async (kind: ExportKind) => {
+    if (!jobId) return;
+    setExportError(null);
+    setExportingKind(kind);
+    try {
+      const { blob, filename } = await exportForecast(jobId, kind);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename || `forecast-${jobId}-${kind}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(
+        err instanceof Error
+          ? err.message
+          : "Failed to export forecast CSV."
+      );
+    } finally {
+      setExportingKind(null);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
-      <h1 className="text-2xl font-bold mb-6">Forecast Results</h1>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Forecast Results</h1>
+          <p className="text-sm text-muted-foreground">
+            Download reorder-ready CSVs or full forecast points.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={!canExport || exportingKind !== null}
+            onClick={() => triggerDownload("orders")}
+            className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+            aria-busy={exportingKind === "orders"}
+          >
+            {exportingKind === "orders" ? "Exporting..." : "Export order plan"}
+          </button>
+          <button
+            type="button"
+            disabled={!canExport || exportingKind !== null}
+            onClick={() => triggerDownload("forecast")}
+            className="inline-flex items-center rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+            aria-busy={exportingKind === "forecast"}
+          >
+            {exportingKind === "forecast"
+              ? "Exporting..."
+              : "Export forecast points"}
+          </button>
+        </div>
+      </div>
+
+      {exportError && (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+          {exportError}
+        </div>
+      )}
 
       {/* Job Status */}
       <div className="mb-6">

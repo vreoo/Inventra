@@ -265,6 +265,8 @@ export interface ConfigUpdatePayload {
 
 const DEFAULT_UPLOAD_SCHEMA = "1.0.0";
 
+export type ExportKind = "orders" | "forecast";
+
 function normalizeUploadResponse(data: unknown): UploadResponse {
   if (typeof data !== "object" || data === null) {
     throw new Error("Unexpected upload response payload");
@@ -436,6 +438,35 @@ export async function getForecastResult(
   }
 
   return res.json();
+}
+
+export async function exportForecast(
+  jobId: string,
+  kind: ExportKind = "orders"
+): Promise<{ blob: Blob; filename?: string }> {
+  const res = await fetch(
+    `${API_BASE_URL}/forecast/${jobId}/export?kind=${kind}`,
+    {
+      headers: { Accept: "text/csv" },
+    }
+  );
+
+  if (!res.ok) {
+    const errorData = await res
+      .json()
+      .catch(() => ({ detail: "Failed to export forecast." }));
+    throw new Error(errorData.detail || "Failed to export forecast.");
+  }
+
+  const disposition = res.headers.get("content-disposition") || "";
+  let filename: string | undefined;
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  if (match?.[1]) {
+    filename = match[1];
+  }
+
+  const blob = await res.blob();
+  return { blob, filename };
 }
 
 export async function validateFile(fileId: string): Promise<UploadResponse> {
