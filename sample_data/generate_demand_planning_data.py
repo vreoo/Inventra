@@ -111,9 +111,11 @@ def generate_rows(
 
             demand_units = max(0, int(round(demand_value)))
 
-            base_on_hand = (profile.lead_time_days + args.safety_stock_days) * profile.base_demand
+            coverage_days = profile.lead_time_days + args.safety_stock_days
+            expected_daily = profile.base_demand * seasonal_factor
+            base_on_hand = coverage_days * expected_daily
             inventory_jitter = 1.0 + random.gauss(0, args.inventory_jitter_pct)
-            inventory_jitter = max(0.25, inventory_jitter)
+            inventory_jitter = max(0.5, inventory_jitter)
             on_hand = max(demand_units, int(round(base_on_hand * inventory_jitter)))
 
             yield (
@@ -165,14 +167,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--base-demand-min",
         type=float,
-        default=20.0,
-        help="Minimum average daily demand per SKU (default: 20).",
+        default=60.0,
+        help="Minimum average daily demand per SKU (default: 60).",
     )
     parser.add_argument(
         "--base-demand-max",
         type=float,
-        default=240.0,
-        help="Maximum average daily demand per SKU (default: 240).",
+        default=200.0,
+        help="Maximum average daily demand per SKU (default: 200).",
     )
     parser.add_argument(
         "--lead-time-min",
@@ -183,56 +185,56 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--lead-time-max",
         type=int,
-        default=35,
-        help="Maximum lead time in days (default: 35).",
+        default=18,
+        help="Maximum lead time in days (default: 18).",
     )
     parser.add_argument(
         "--safety-stock-days",
         type=int,
-        default=7,
-        help="Extra days of coverage to multiply on-hand inventory (default: 7).",
+        default=5,
+        help="Extra days of coverage to multiply on-hand inventory (default: 5).",
     )
     parser.add_argument(
         "--seasonality-strength",
         type=float,
-        default=0.30,
-        help="Upper bound for SKU seasonality amplitude (default: 0.30).",
+        default=0.20,
+        help="Upper bound for SKU seasonality amplitude (default: 0.20).",
     )
     parser.add_argument(
         "--trend-pct",
         type=float,
-        default=0.18,
-        help="Maximum absolute total trend over the scripted period (default: 0.18).",
+        default=0.10,
+        help="Maximum absolute total trend over the scripted period (default: 0.10).",
     )
     parser.add_argument(
         "--demand-noise-pct",
         type=float,
-        default=0.12,
-        help="Standard deviation for Gaussian demand noise as a fraction (default: 0.12).",
+        default=0.08,
+        help="Standard deviation for Gaussian demand noise as a fraction (default: 0.08).",
     )
     parser.add_argument(
         "--inventory-jitter-pct",
         type=float,
-        default=0.05,
-        help="Standard deviation for inventory jitter as a fraction (default: 0.05).",
+        default=0.03,
+        help="Standard deviation for inventory jitter as a fraction (default: 0.03).",
     )
     parser.add_argument(
         "--promo-probability",
         type=float,
-        default=0.05,
-        help="Probability of a promotional lift on any day/SKU (default: 0.05).",
+        default=0.025,
+        help="Probability of a promotional lift on any day/SKU (default: 0.025).",
     )
     parser.add_argument(
         "--promo-lift-min",
         type=float,
-        default=0.25,
-        help="Minimum promotional lift multiplier (default: 0.25).",
+        default=0.10,
+        help="Minimum promotional lift multiplier (default: 0.10).",
     )
     parser.add_argument(
         "--promo-lift-max",
         type=float,
-        default=0.80,
-        help="Maximum promotional lift multiplier (default: 0.80).",
+        default=0.40,
+        help="Maximum promotional lift multiplier (default: 0.40).",
     )
     parser.add_argument(
         "--seed",

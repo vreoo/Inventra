@@ -15,12 +15,7 @@ router = APIRouter()
 UPLOAD_DIR = Path("storage/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-DEMAND_PLANNING_ENABLED = (
-    os.getenv("DEMAND_PLANNING_ENABLED", "false").lower() == "true"
-)
-DEFAULT_UPLOAD_MODE = (
-    ForecastMode.DEMAND if DEMAND_PLANNING_ENABLED else ForecastMode.INVENTORY
-)
+DEFAULT_UPLOAD_MODE = ForecastMode.DEMAND
 
 # Initialize file handler
 file_handler = FileHandler()

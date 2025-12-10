@@ -17,8 +17,8 @@ from models.forecast import (
     ValidationSummary,
     ValidationAnomaly,
 )
+from services.ai_summarizer import AiSummaryService
 from services.file_handler import FileHandler
-from services.forecast_engine import ForecastEngine
 from services.demand_engine import DemandPlanningEngine
 
 logger = logging.getLogger(__name__)
@@ -32,11 +32,50 @@ DEFAULT_SCHEMA_VERSION = "1.0.0"
 DEMAND_PLANNING_ENABLED = (
     os.getenv("DEMAND_PLANNING_ENABLED", "true").lower() == "true"
 )
+ENABLE_AI_SUMMARY = os.getenv("ENABLE_AI_SUMMARY", "false").lower() == "true"
+AI_SUMMARY_MODEL = os.getenv("AI_SUMMARY_MODEL", "HuggingFaceH4/zephyr-7b-beta")
+HF_API_TOKEN = os.getenv("HF_API_TOKEN")
+HF_API_BASE_URL = os.getenv("HF_API_BASE_URL")
+AI_SUMMARY_FALLBACK_MODELS = [
+    model.strip()
+    for model in os.getenv("AI_SUMMARY_FALLBACK_MODELS", "").split(",")
+    if model.strip()
+]
 
 # Initialize services
 file_handler = FileHandler()
-forecast_engine = ForecastEngine()
 demand_engine = DemandPlanningEngine()
+_ai_summary_service: Optional[AiSummaryService] = None
+
+
+def get_ai_summary_service() -> Optional[AiSummaryService]:
+    global _ai_summary_service
+
+    if not ENABLE_AI_SUMMARY:
+        return None
+
+    if _ai_summary_service:
+        return _ai_summary_service
+
+    if not HF_API_TOKEN:
+        logger.warning(
+            "AI summary is enabled but HF_API_TOKEN is not configured; skipping summaries"
+        )
+        return None
+
+    _ai_summary_service = AiSummaryService(
+        api_token=HF_API_TOKEN,
+        model=AI_SUMMARY_MODEL,
+        base_url=HF_API_BASE_URL,
+        fallback_models=AI_SUMMARY_FALLBACK_MODELS or None,
+    )
+    logger.info(
+        "AI summary service initialised (model=%s, base_url=%s, fallbacks=%s)",
+        AI_SUMMARY_MODEL,
+        HF_API_BASE_URL or "default",
+        AI_SUMMARY_FALLBACK_MODELS or "none",
+    )
+    return _ai_summary_service
 
 @router.post("/forecast")
 async def create_forecast_job(req: ForecastRequest, background_tasks: BackgroundTasks):
@@ -67,12 +106,6 @@ async def create_forecast_job(req: ForecastRequest, background_tasks: Background
                 mode = ForecastMode(metadata_mode)
             except ValueError:
                 logger.warning("Unknown mode '%s' in metadata for file %s", metadata_mode, req.fileId)
-
-        if mode == ForecastMode.DEMAND and not DEMAND_PLANNING_ENABLED:
-            raise HTTPException(
-                status_code=403,
-                detail="Demand planning is disabled on this environment.",
-            )
 
         schema_version = (
             req.schema_version
@@ -125,6 +158,13 @@ async def create_forecast_job(req: ForecastRequest, background_tasks: Background
             and validation_summary.detected_frequency != config.frequency
         ):
             config.frequency = validation_summary.detected_frequency
+
+        if config.enable_ai_summary is None:
+            config.enable_ai_summary = ENABLE_AI_SUMMARY
+        else:
+            config.enable_ai_summary = bool(
+                config.enable_ai_summary and ENABLE_AI_SUMMARY
+            )
 
         # Create job
         job_id = str(uuid4())
@@ -191,51 +231,105 @@ async def process_forecast_job(job_id: str):
         with job_file.open("w") as f:
             json.dump(job.dict(), f, default=str)
         
-        if job.mode == ForecastMode.DEMAND:
-            metadata = file_handler.get_upload_metadata(job.fileId) or {}
-            mapping_dict = metadata.get("mapping") or {}
-            mapping = job.mapping or ColumnMapping(**mapping_dict)
+        metadata = file_handler.get_upload_metadata(job.fileId) or {}
+        mapping_dict = metadata.get("mapping") or {}
+        mapping = job.mapping or ColumnMapping(**mapping_dict)
 
-            artifacts = file_handler.prepare_demand_artifacts(
-                job.fileId,
-                mapping,
-                job.config,
-            )
+        artifacts = file_handler.prepare_demand_artifacts(
+            job.fileId,
+            mapping,
+            job.config,
+        )
 
+        logger.info(
+            "Processing demand planning for %s with %d rows",
+            job.fileId,
+            len(artifacts.demand_df),
+        )
+
+        results = demand_engine.generate(
+            artifacts=artifacts,
+            config=job.config,
+            schema_version=job.schema_version,
+        )
+
+        job.validation = artifacts.validation
+        job.mapping = mapping
+        if (
+            artifacts.validation.detected_frequency
+            and job.config
+            and artifacts.validation.detected_frequency != job.config.frequency
+        ):
+            job.config.frequency = artifacts.validation.detected_frequency
+
+        summarizer = get_ai_summary_service()
+        if summarizer and results:
+            allow_ai = True
+            if job.config and job.config.enable_ai_summary is not None:
+                allow_ai = job.config.enable_ai_summary
+
+            if not allow_ai:
+                logger.info(
+                    "Skipping AI summary for job %s due to config flag (enable_ai_summary=%s)",
+                    job.jobId,
+                    job.config.enable_ai_summary if job.config else None,
+                )
+                summarizer = None
+        elif not summarizer:
             logger.info(
-                "Processing demand planning for %s with %d rows",
-                job.fileId,
-                len(artifacts.demand_df),
+                "AI summarizer unavailable for job %s (env_enabled=%s, token_present=%s)",
+                job.jobId,
+                ENABLE_AI_SUMMARY,
+                bool(HF_API_TOKEN),
             )
 
-            results = demand_engine.generate(
-                artifacts=artifacts,
-                config=job.config,
-                schema_version=job.schema_version,
-            )
+        if summarizer and results:
+            for result in results:
+                insights = []
+                if getattr(result, "insights", None):
+                    for insight in result.insights:
+                        message = getattr(insight, "message", None)
+                        if message:
+                            insights.append(message)
 
-            job.validation = artifacts.validation
-            job.mapping = mapping
-            if (
-                artifacts.validation.detected_frequency
-                and job.config
-                and artifacts.validation.detected_frequency != job.config.frequency
-            ):
-                job.config.frequency = artifacts.validation.detected_frequency
-        else:
-            file_path = file_handler.get_file_path(job.fileId)
-            inventory_data, _ = file_handler.process_inventory_data(
-                file_path, job.mapping
-            )
+                mode_value = None
+                if hasattr(result, "mode") and result.mode is not None:
+                    mode_value = (
+                        result.mode.value if hasattr(result.mode, "value") else result.mode
+                    )
+                elif job.mode:
+                    mode_value = job.mode.value if hasattr(job.mode, "value") else job.mode
 
-            logger.info(
-                "Processing %d inventory records for job %s",
-                len(inventory_data),
-                job_id,
-            )
+                payload = {
+                    "sku": getattr(result, "product_id", None)
+                    or getattr(result, "product_name", None),
+                    "mode": mode_value,
+                    "horizon": job.config.horizon if job.config else None,
+                    "stockout_date": getattr(result, "stockout_date", None),
+                    "reorder_point": getattr(result, "reorder_point", None),
+                    "reorder_date": getattr(result, "reorder_date", None),
+                    "recommended_order_qty": getattr(result, "recommended_order_qty", None),
+                    "safety_stock": getattr(result, "safety_stock", None),
+                    "service_level": getattr(result, "service_level", None),
+                    "insights": insights,
+                }
+                try:
+                    ai_summary = summarizer.summarize(job.jobId, payload)
+                except Exception as err:  # pragma: no cover - defensive
+                    logger.warning(
+                        "Unable to generate AI summary for job %s sku %s: %s",
+                        job.jobId,
+                        payload.get("sku"),
+                        err,
+                    )
+                    continue
 
-            results = forecast_engine.generate_forecast(inventory_data, job.config)
-        
+                result.ai_summary = ai_summary.summary
+                result.ai_actions = ai_summary.actions
+                result.ai_risks = ai_summary.risks
+                result.ai_source = ai_summary.source
+                result.ai_generated_at = ai_summary.generated_at
+
         # Update job with results
         job.status = JobStatus.COMPLETED
         job.completed_at = datetime.now()

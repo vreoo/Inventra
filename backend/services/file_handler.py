@@ -27,6 +27,7 @@ class DemandArtifacts:
     lead_times: Dict[str, int]
     frequency: str
     validation: ValidationSummary
+    exog_df: Optional[pd.DataFrame] = None
 
 
 class FileHandler:
@@ -221,19 +222,37 @@ class FileHandler:
         df = df.sort_values(mapping.date)
         df["__sku__"] = df[sku_col] if mapping.sku else "default_sku"
 
-        demand_series = (
-            df.groupby(["__sku__", mapping.date])[mapping.demand]
-            .sum()
+        used_cols = {
+            mapping.date,
+            mapping.demand,
+            mapping.sku,
+            mapping.inventory,
+            mapping.lead_time,
+            mapping.name,
+            mapping.promo_flag,
+            mapping.holiday_flag,
+            "__sku__",
+        }
+        exog_candidates = [
+            col
+            for col in df.columns
+            if col not in used_cols and pd.api.types.is_numeric_dtype(df[col])
+        ]
+
+        agg: Dict[str, Any] = {mapping.demand: "sum"}
+        for col in exog_candidates:
+            agg[col] = "last"
+
+        grouped = (
+            df.groupby(["__sku__", mapping.date])
+            .agg(agg)
             .reset_index()
-            .rename(
-                columns={
-                    "__sku__": "unique_id",
-                    mapping.date: "ds",
-                    mapping.demand: "y",
-                }
-            )
+            .rename(columns={"__sku__": "unique_id", mapping.date: "ds", mapping.demand: "y"})
         )
-        demand_series["ds"] = pd.to_datetime(demand_series["ds"])
+        grouped["ds"] = pd.to_datetime(grouped["ds"])
+
+        demand_series = grouped[["unique_id", "ds", "y"]]
+        exog_df = grouped[["unique_id", "ds"] + exog_candidates] if exog_candidates else None
 
         frequency = config.frequency or self._detect_frequency(demand_series["ds"])
         if not frequency:
@@ -277,6 +296,7 @@ class FileHandler:
             lead_times=lead_times,
             frequency=frequency,
             validation=summary,
+            exog_df=exog_df,
         )
 
     def save_upload_metadata(
