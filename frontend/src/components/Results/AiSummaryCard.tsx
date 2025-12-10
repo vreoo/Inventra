@@ -39,7 +39,7 @@ export function AiSummaryCard({
 
   if (!hasContent && featureEnabled) {
     return (
-      <div className="mb-6 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+      <div className="mb-6 rounded-lg border border-dashed border-white/20 bg-white/5 p-4 text-sm text-slate-200">
         AI summary is enabled for {skuLabel}, but no explanation was generated.
         This usually resolves once the forecast is re-run or the AI service is
         available again.
@@ -48,25 +48,21 @@ export function AiSummaryCard({
   }
 
   return (
-    <div className="mb-6 rounded-lg border border-indigo-100 bg-indigo-50 p-5 shadow-sm">
+    <div className="mb-6 rounded-xl border border-white/10 bg-gradient-to-b from-white/5 via-white/[0.03] to-slate-950/80 p-5 shadow-[0_20px_70px_-30px_rgba(15,23,42,0.7)]">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-indigo-900">
-            AI Forecast Summary
-          </h3>
-          <p className="text-sm text-indigo-700">
-            Highlights generated for {skuLabel}
-          </p>
+          <h3 className="text-lg font-semibold text-white">AI Forecast Summary</h3>
+          <p className="text-sm text-slate-300">Highlights generated for {skuLabel}</p>
         </div>
         {(source || formattedTimestamp) && (
-          <div className="flex flex-col items-start text-xs text-indigo-700 sm:items-end">
+          <div className="flex flex-col items-start text-xs text-slate-300 sm:items-end">
             {source && (
-              <span className="rounded-full bg-indigo-100 px-3 py-1 font-medium">
+              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 font-medium text-slate-100">
                 {source}
               </span>
             )}
             {formattedTimestamp && (
-              <span className="mt-1 text-indigo-600">
+              <span className="mt-1 text-slate-400">
                 Generated {formattedTimestamp}
               </span>
             )}
@@ -74,20 +70,18 @@ export function AiSummaryCard({
         )}
       </div>
 
-      <p className="mt-4 text-sm leading-relaxed text-indigo-900">{summary}</p>
+      <p className="mt-4 text-sm leading-relaxed text-slate-200">{summary}</p>
 
       {Array.isArray(actions) && actions.length > 0 && (
         <div className="mt-4">
-          <h4 className="text-sm font-semibold text-indigo-900">
-            Recommended Actions
-          </h4>
-          <ul className="mt-2 space-y-1 text-sm text-indigo-900">
+          <h4 className="text-sm font-semibold text-white">Recommended Actions</h4>
+          <ul className="mt-2 space-y-1 text-sm text-slate-200">
             {actions.map((action, index) => (
               <li
                 key={`${action}-${index}`}
-                className="flex items-start gap-2 rounded-md bg-white/80 p-2 shadow-sm"
+                className="flex items-start gap-2 rounded-md border border-white/10 bg-white/5 p-2"
               >
-                <span className="mt-2 h-2 w-2 flex-shrink-0 rounded-full bg-indigo-500" />
+                <span className="mt-2 h-2 w-2 flex-shrink-0 rounded-full bg-cyan-400" />
                 <span>{action}</span>
               </li>
             ))}
@@ -96,14 +90,12 @@ export function AiSummaryCard({
       )}
 
       {Array.isArray(risks) && risks.length > 0 && (
-        <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3">
-          <h4 className="text-sm font-semibold text-amber-900">
-            Risks To Monitor
-          </h4>
-          <ul className="mt-2 space-y-1 text-sm text-amber-900">
+        <div className="mt-4 rounded-md border border-amber-300/40 bg-amber-400/10 p-3">
+          <h4 className="text-sm font-semibold text-amber-50">Risks To Monitor</h4>
+          <ul className="mt-2 space-y-1 text-sm text-amber-100">
             {risks.map((risk, index) => (
               <li key={`${risk}-${index}`} className="flex gap-2">
-                <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-amber-500" />
+                <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-amber-400" />
                 <span>{risk}</span>
               </li>
             ))}
