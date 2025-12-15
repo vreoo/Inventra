@@ -11,7 +11,7 @@
 - **In scope**: Backend summariser service, API wiring, result model updates, feature flag, frontend rendering, documentation, unit/integration tests, basic health reporting.
 - **Out of scope**: UI redesign beyond the AI card, advanced conversation/history, alternative providers, local LLM execution.
 - **Done when**:
-  1. Completed forecast jobs include populated AI summary fields when the feature flag is enabled.
+  1. A completed job supports on-demand AI summary generation per SKU and persists the response.
   2. Frontend renders the summary card and hides it gracefully when disabled/missing.
   3. Documentation covers setup and operational guidance, and automated tests verify success and fallback paths.
 
@@ -19,10 +19,10 @@
 
 - **Model**: `HuggingFaceH4/zephyr-7b-beta` on `https://huggingface.co/HuggingFaceH4/zephyr-7b-beta`.
 - **Inference Flow**:
-  1. `process_forecast_job` (inventory or demand) assembles per-SKU metrics.
-  2. `AiSummaryService` formats a prompt and calls Hugging Face Inference API using `HF_API_TOKEN`.
-  3. Response is mapped into new fields on `ForecastResult` (summary, recommended actions, risks).
-  4. Result JSON is updated on disk and returned to the frontend.
+  1. `POST /api/forecast/{job_id}/ai-summary` accepts a SKU/product id after the job completes.
+  2. The handler loads stored results, assembles per-SKU metrics, and calls `AiSummaryService` using `HF_API_TOKEN`.
+  3. Response is mapped into new fields on `ForecastResult` (summary, recommended actions, risks) and persisted back to the job file.
+  4. The frontend fetches the updated job payload or uses the response to render the card immediately.
 - **Configuration**:
   - `ENABLE_AI_SUMMARY` (default `false`) to gate the feature.
   - `HF_API_TOKEN` for authentication.
@@ -94,24 +94,8 @@ print(response["choices"][0]["message"])
 3. **API Wiring (`backend/api/forecast.py`)**
 
    - Inject summariser into module scope (lazy init to avoid startup failures).
-   - After numeric results (`results = demand_engine.generate(...)` or `forecast_engine.generate_forecast(...)`), iterate over each `ForecastResult`.
-   - When `ENABLE_AI_SUMMARY` is `true`, call summariser with metrics:
-     ```python
-     payload = {
-       "sku": result.product_id or result.product_name,
-       "mode": job.mode.value,
-       "horizon": job.config.horizon if job.config else None,
-       "stockout_date": result.stockout_date,
-       "reorder_point": result.reorder_point,
-       "reorder_date": result.reorder_date,
-       "recommended_order_qty": result.recommended_order_qty,
-       "safety_stock": result.safety_stock,
-       "service_level": result.service_level,
-       "insights": [ins.message for ins in result.insights],
-     }
-     ```
-   - Persist generated text + structured fields; on exception, log warning and skip AI fields.
-   - Optional: add `POST /api/forecast/{job_id}/summaries/{sku}` to regenerate on demand (stretch).
+   - Add `POST /api/forecast/{job_id}/ai-summary` to call the summariser for a single SKU after the job completes.
+   - Persist generated text + structured fields; on exception, return a 502 and leave existing data untouched.
 
 4. **Configuration & Startup**
    - Update `backend/main.py` to read new env vars and expose `/api/ai/status` returning `{"enabled": bool, "model": str}`.
@@ -134,7 +118,7 @@ print(response["choices"][0]["message"])
    - If fields missing and job config indicates AI enabled, show “AI explanation unavailable” notice.
 
 3. **Optional Interactions**
-   - If regen endpoint built, add button with optimistic UI update.
+   - Add button with optimistic UI update tied to the on-demand endpoint.
    - Surface summaries through a dedicated `AiSummaryCard` component; retire legacy AI analysis panels that duplicated this information.
 
 ## 6. Prompt Template Draft

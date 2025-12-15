@@ -111,6 +111,9 @@ def generate_rows(
 
             demand_units = max(0, int(round(demand_value)))
 
+            if args.zero_demand_probability and random.random() < args.zero_demand_probability:
+                demand_units = 0
+
             coverage_days = profile.lead_time_days + args.safety_stock_days
             expected_daily = profile.base_demand * seasonal_factor
             base_on_hand = coverage_days * expected_daily
@@ -237,6 +240,12 @@ def parse_args() -> argparse.Namespace:
         help="Maximum promotional lift multiplier (default: 0.40).",
     )
     parser.add_argument(
+        "--zero-demand-probability",
+        type=float,
+        default=0.0,
+        help="Probability that a given day/SKU has zero demand (default: 0.0).",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=1337,
@@ -276,6 +285,9 @@ def parse_args() -> argparse.Namespace:
 
     if args.promo_lift_min > args.promo_lift_max:
         raise SystemExit("promo-lift-min cannot exceed promo-lift-max.")
+
+    if not 0.0 <= args.zero_demand_probability <= 1.0:
+        raise SystemExit("zero-demand-probability must be between 0 and 1.")
 
     random.seed(args.seed)
     return args

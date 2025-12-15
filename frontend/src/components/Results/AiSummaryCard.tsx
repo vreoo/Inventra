@@ -6,7 +6,10 @@ interface AiSummaryCardProps {
   risks?: string[] | null;
   source?: string | null;
   generatedAt?: string | null;
-  featureEnabled: boolean;
+  aiAvailable: boolean;
+  onGenerate?: () => void;
+  isGenerating?: boolean;
+  error?: string | null;
   skuLabel: string;
 }
 
@@ -27,22 +30,47 @@ export function AiSummaryCard({
   risks,
   source,
   generatedAt,
-  featureEnabled,
+  aiAvailable,
+  onGenerate,
+  isGenerating,
+  error,
   skuLabel,
 }: AiSummaryCardProps) {
   const hasContent = Boolean(summary);
   const formattedTimestamp = formatTimestamp(generatedAt);
 
-  if (!hasContent && !featureEnabled) {
+  if (!aiAvailable && !hasContent) {
     return null;
   }
 
-  if (!hasContent && featureEnabled) {
+  if (!hasContent && aiAvailable) {
     return (
       <div className="mb-6 rounded-lg border border-dashed border-white/20 bg-white/5 p-4 text-sm text-slate-200">
-        AI summary is enabled for {skuLabel}, but no explanation was generated.
-        This usually resolves once the forecast is re-run or the AI service is
-        available again.
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="font-semibold text-white">
+              No AI summary generated for {skuLabel}
+            </div>
+            <p className="text-slate-300">
+              Generate on demand when you want AI-backed highlights without slowing the forecast run.
+            </p>
+          </div>
+          {onGenerate && (
+            <button
+              type="button"
+              onClick={onGenerate}
+              disabled={isGenerating}
+              className="inline-flex items-center gap-2 self-start rounded-full border border-cyan-400/60 bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-400/30 transition hover:translate-y-0.5 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:border-cyan-400/30 disabled:bg-cyan-400/30 disabled:text-slate-800"
+            >
+              {isGenerating ? "Generating..." : "Generate AI summary"}
+            </button>
+          )}
+        </div>
+        {error && (
+          <div className="mt-3 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-rose-100">
+            {error}
+          </div>
+        )}
       </div>
     );
   }
@@ -54,21 +82,39 @@ export function AiSummaryCard({
           <h3 className="text-lg font-semibold text-white">AI Forecast Summary</h3>
           <p className="text-sm text-slate-300">Highlights generated for {skuLabel}</p>
         </div>
-        {(source || formattedTimestamp) && (
-          <div className="flex flex-col items-start text-xs text-slate-300 sm:items-end">
-            {source && (
-              <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 font-medium text-slate-100">
-                {source}
-              </span>
-            )}
-            {formattedTimestamp && (
-              <span className="mt-1 text-slate-400">
-                Generated {formattedTimestamp}
-              </span>
-            )}
-          </div>
-        )}
+        <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center sm:gap-3">
+          {onGenerate && (
+            <button
+              type="button"
+              onClick={onGenerate}
+              disabled={isGenerating}
+              className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-100 transition hover:translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:border-white/5 disabled:bg-white/5 disabled:text-slate-500"
+            >
+              {isGenerating ? "Refreshing..." : "Regenerate"}
+            </button>
+          )}
+          {(source || formattedTimestamp) && (
+            <div className="flex flex-col items-start text-xs text-slate-300 sm:items-end">
+              {source && (
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 font-medium text-slate-100">
+                  {source}
+                </span>
+              )}
+              {formattedTimestamp && (
+                <span className="mt-1 text-slate-400">
+                  Generated {formattedTimestamp}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </div>
+
+      {error && (
+        <div className="mt-3 rounded-md border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
+          {error}
+        </div>
+      )}
 
       <p className="mt-4 text-sm leading-relaxed text-slate-200">{summary}</p>
 

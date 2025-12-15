@@ -240,6 +240,16 @@ export interface ForecastJobOptions {
   mappingOverrides?: Partial<ColumnMapping> | null;
 }
 
+export interface AiSummaryResponse {
+  product_id: string;
+  product_name?: string | null;
+  ai_summary: string | null;
+  ai_actions?: string[] | null;
+  ai_risks?: string[] | null;
+  ai_source?: string | null;
+  ai_generated_at?: string | null;
+}
+
 export interface LatestConfig {
   version: string;
   updated_at: string | null;
@@ -505,6 +515,26 @@ export async function updateConfig(
       .catch(() => ({ detail: "Failed to update configuration" }));
     throw new Error(errorData.detail || "Failed to update configuration");
   }
+  return res.json();
+}
+
+export async function requestAiSummary(
+  jobId: string,
+  productId: string
+): Promise<AiSummaryResponse> {
+  const res = await fetch(`${API_BASE_URL}/forecast/${jobId}/ai-summary`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ product_id: productId }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res
+      .json()
+      .catch(() => ({ detail: "Failed to generate AI summary" }));
+    throw new Error(errorData.detail || "Failed to generate AI summary");
+  }
+
   return res.json();
 }
 

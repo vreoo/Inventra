@@ -10,6 +10,7 @@ A comprehensive inventory prediction system that utilizes traditional time serie
 - **Smart Data Validation**: Automatic CSV validation, column detection, coverage checks, and anomaly detection.
 - **Config Versioning**: Append-only configuration history with global and per-SKU overrides.
 - **Modern UI**: Next.js frontend featuring mapping wizard, policy controls, and enriched result visualisations.
+- **On-demand AI Summaries**: Generate per-SKU AI narratives from the results screen without slowing forecast runs.
 - **RESTful API**: FastAPI backend with structured logging and error handling.
 
 ## Architecture
@@ -165,7 +166,14 @@ Output includes:
 - `sample_data/demand_planning_example.csv`: minimal walkthrough dataset that matches the recommended schema.
 - `sample_data/demand_planning_synthetic.csv`: generated via the script above; two years of daily history for 25 SKUs.
 - `sample_data/sample_inventory_data.csv`: legacy inventory example used by the original flow.
-- Synthetic generator: `python3 sample_data/generate_demand_planning_data.py --help` lists all switches for crafting custom demo sets (lead time ranges, safety stock buffer, promo lifts, etc.).
+- Synthetic generator: `python3 sample_data/generate_demand_planning_data.py --help` lists all switches for crafting custom demo sets (lead time ranges, safety stock buffer, promo lifts, etc.). Use `--zero-demand-probability` to force intermittent demand patterns for Croston variants.
+- Model-focused demo sets (each capped at 5 SKUs for fast AI summaries):
+  - `sample_data/model_auto_arima.csv` — balanced trends + mild seasonality for AutoARIMA defaults.
+  - `sample_data/model_auto_ets.csv` — stronger seasonality for AutoETS or SeasonalNaive.
+  - `sample_data/model_seasonal_naive.csv` — near-pure seasonal pattern to showcase SeasonalNaive.
+  - `sample_data/model_random_walk_drift.csv` — light drift/low seasonality for Naive or RandomWalkWithDrift.
+  - `sample_data/model_croston_intermittent.csv` — ~50% zero days to trigger CrostonClassic/Optimized/SBA.
+  - `sample_data/model_tbats_multiseason.csv` — multi-season mix (weekly + annual) for TBATS when enabled.
 - Real-world demand sources (Kaggle):
   - **M5 Forecasting - Accuracy** — retail demand with calendar events for Walmart.
   - **Corporación Favorita Grocery Sales Forecasting** — Ecuador grocery chain with hierarchical SKUs.

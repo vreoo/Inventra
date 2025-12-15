@@ -6,6 +6,7 @@ import {
   ExportKind,
   getForecastResult,
   ForecastResult,
+  requestAiSummary,
 } from "@/services/api";
 import { useSearchParams } from "next/navigation";
 import { ExternalFactors } from "@/components/Results/ExternalFactors";
@@ -51,6 +52,9 @@ function ResultsPageContent() {
   >({});
   const [exportingKind, setExportingKind] = useState<ExportKind | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [aiStatus, setAiStatus] = useState<
+    Record<string, { loading: boolean; error: string | null }>
+  >({});
 
   useEffect(() => {
     if (!jobId) return;
@@ -124,7 +128,8 @@ function ResultsPageContent() {
                   </div>
                   {jobData.completed_at && (
                     <div>
-                      Completed: {new Date(jobData.completed_at).toLocaleString()}
+                      Completed:{" "}
+                      {new Date(jobData.completed_at).toLocaleString()}
                     </div>
                   )}
                 </div>
@@ -141,16 +146,21 @@ function ResultsPageContent() {
                         {jobData.validation.detected_frequency}
                       </div>
                     )}
-                    {typeof jobData.validation.date_coverage_pct === "number" && (
+                    {typeof jobData.validation.date_coverage_pct ===
+                      "number" && (
                       <div>
                         Date coverage:{" "}
-                        {(jobData.validation.date_coverage_pct * 100).toFixed(1)}%
+                        {(jobData.validation.date_coverage_pct * 100).toFixed(
+                          1
+                        )}
+                        %
                       </div>
                     )}
                     {jobData.validation.anomalies &&
                       jobData.validation.anomalies.length > 0 && (
                         <div>
-                          Anomalies flagged: {jobData.validation.anomalies.length}
+                          Anomalies flagged:{" "}
+                          {jobData.validation.anomalies.length}
                         </div>
                       )}
                   </div>
@@ -189,12 +199,54 @@ function ResultsPageContent() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       setExportError(
-        err instanceof Error
-          ? err.message
-          : "Failed to export forecast CSV."
+        err instanceof Error ? err.message : "Failed to export forecast CSV."
       );
     } finally {
       setExportingKind(null);
+    }
+  };
+
+  const triggerAiSummary = async (productKey: string) => {
+    if (!jobId || !productKey) return;
+    setAiStatus((prev) => ({
+      ...prev,
+      [productKey]: { loading: true, error: null },
+    }));
+    try {
+      const response = await requestAiSummary(jobId, productKey);
+      setJobData((prev) => {
+        if (!prev?.results) return prev;
+        const updatedResults = prev.results.map((result) => {
+          const key = String(result.product_id || result.product_name || "");
+          if (key !== productKey) {
+            return result;
+          }
+          return {
+            ...result,
+            ai_summary: response.ai_summary,
+            ai_actions: response.ai_actions ?? [],
+            ai_risks: response.ai_risks ?? [],
+            ai_source: response.ai_source ?? null,
+            ai_generated_at: response.ai_generated_at ?? null,
+          };
+        });
+        return { ...prev, results: updatedResults };
+      });
+      setAiStatus((prev) => ({
+        ...prev,
+        [productKey]: { loading: false, error: null },
+      }));
+    } catch (err) {
+      setAiStatus((prev) => ({
+        ...prev,
+        [productKey]: {
+          loading: false,
+          error:
+            err instanceof Error
+              ? err.message
+              : "Failed to generate AI summary.",
+        },
+      }));
     }
   };
 
@@ -226,7 +278,9 @@ function ResultsPageContent() {
               className="inline-flex items-center gap-2 rounded-full border border-cyan-400/50 bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-400/30 transition hover:translate-y-0.5 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:border-cyan-400/30 disabled:bg-cyan-400/30 disabled:text-slate-800"
               aria-busy={exportingKind === "orders"}
             >
-              {exportingKind === "orders" ? "Exporting..." : "Export order plan"}
+              {exportingKind === "orders"
+                ? "Exporting..."
+                : "Export order plan"}
             </button>
             <button
               type="button"
@@ -276,6 +330,13 @@ function ResultsPageContent() {
             {jobData.results.map((result, index) => {
               const resultKey =
                 result.product_id ?? result.product_name ?? index.toString();
+              const aiKey = String(
+                result.product_id ?? result.product_name ?? resultKey
+              );
+              const aiState = aiStatus[aiKey] ?? {
+                loading: false,
+                error: null,
+              };
               const selectedRange = forecastRangeSelections[resultKey] ?? "7";
               const selectedOption =
                 FORECAST_RANGE_OPTIONS.find(
@@ -422,7 +483,9 @@ function ResultsPageContent() {
                       {metricCards.map((card) => (
                         <div
                           key={card.key}
-                          className={`rounded-xl p-4 backdrop-blur ${toneStyles[card.tone]}`}
+                          className={`rounded-xl p-4 backdrop-blur ${
+                            toneStyles[card.tone]
+                          }`}
                         >
                           <h3 className="text-sm font-semibold">
                             {card.title}
@@ -449,46 +512,18 @@ function ResultsPageContent() {
                     risks={result.ai_risks}
                     source={result.ai_source}
                     generatedAt={result.ai_generated_at}
-                    featureEnabled={aiSummaryEnabled}
+                    aiAvailable={aiSummaryEnabled}
+                    onGenerate={
+                      aiSummaryEnabled
+                        ? () => triggerAiSummary(aiKey)
+                        : undefined
+                    }
+                    isGenerating={aiState.loading}
+                    error={aiState.error}
                     skuLabel={
                       result.product_name || result.product_id || "this SKU"
                     }
                   />
-
-                  {/* Insights */}
-                  {result.insights && result.insights.length > 0 && (
-                    <div className="mb-6">
-                      <h3 className="mb-3 text-sm font-semibold text-white">
-                        Insights
-                      </h3>
-                      <div className="space-y-2">
-                        {result.insights.map((insight, i) => (
-                          <div
-                            key={i}
-                            className={`rounded-lg border px-3 py-2 ${
-                              insight.severity === "critical"
-                                ? "border-rose-400/30 bg-rose-500/10 text-rose-50"
-                                : insight.severity === "warning"
-                                ? "border-amber-300/30 bg-amber-400/10 text-amber-50"
-                                : "border-cyan-400/30 bg-cyan-500/10 text-cyan-50"
-                            }`}
-                          >
-                            <p className="text-sm">
-                              <span className="font-semibold capitalize">
-                                {insight.type}:
-                              </span>{" "}
-                              {insight.message}
-                              {insight.value && (
-                                <span className="ml-2 font-mono">
-                                  ({insight.value.toFixed(2)})
-                                </span>
-                              )}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
 
                   {/* Forecast Points Preview */}
                   {hasForecastPoints ? (
@@ -610,7 +645,8 @@ function ResultsPageContent() {
                                 <Tooltip
                                   contentStyle={{
                                     backgroundColor: "#0f172a",
-                                    border: "1px solid rgba(148, 163, 184, 0.4)",
+                                    border:
+                                      "1px solid rgba(148, 163, 184, 0.4)",
                                     borderRadius: "12px",
                                     color: "#e2e8f0",
                                   }}

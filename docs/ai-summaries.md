@@ -2,11 +2,13 @@
 
 ## Overview
 
-The AI summary pipeline augments completed forecast jobs with concise narratives,
-recommended actions, and key risks per SKU. Summaries are generated with the
-`HuggingFaceH4/zephyr-7b-beta` hosted model via the Hugging Face Inference API.
-When the integration is disabled or unavailable, the backend falls back to
-standard numeric results so existing workflows continue to operate.
+The AI summary pipeline is now on-demand. Planners can generate a concise
+per-SKU narrative after a job completes instead of during the forecast run.
+This keeps long-running jobs fast while still offering AI context when needed.
+Summaries use the `HuggingFaceH4/zephyr-7b-beta` hosted model via the Hugging
+Face Inference API. When the integration is disabled or unavailable, the backend
+returns standard numeric results and the UI exposes a “Generate AI summary”
+button only when enabled.
 
 ## Setup
 
@@ -27,16 +29,13 @@ standard numeric results so existing workflows continue to operate.
 
 ## Usage
 
-- When `ENABLE_AI_SUMMARY` is true and `HF_API_TOKEN` is present, background job
-  processing requests the model once per `{jobId, sku}` and stores the structured
-  results on each `ForecastResult`.
-- The frontend renders the narrative inside the forecast results view. If AI
-  summaries are enabled but a particular SKU is missing a response, the UI shows
-  a non-blocking warning so planners fall back to numeric insights.
-- Job configuration can opt-in on a per-run basis with
-  `config.enable_ai_summary = true`. The effective toggle is
-  `ENABLE_AI_SUMMARY` **and** `config.enable_ai_summary`; if the env flag is off,
-  per-run overrides are ignored for safety.
+- When `ENABLE_AI_SUMMARY` is true and `HF_API_TOKEN` is present, the frontend
+  shows a “Generate AI summary” button per SKU in the results view. Clicking it
+  calls `POST /api/forecast/{jobId}/ai-summary` with `{ "product_id": "SKU-001" }`.
+- Responses are persisted back onto the job file, so subsequent refreshes reuse
+  the generated summary unless you regenerate.
+- If AI summaries are disabled or misconfigured, the endpoint returns 503 and
+  the button is hidden.
 
 ## Troubleshooting
 

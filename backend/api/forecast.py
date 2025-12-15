@@ -8,6 +8,7 @@ from pathlib import Path
 import json
 import logging
 from datetime import datetime
+from enum import Enum
 from typing import Optional, Dict, Any, List
 
 from models.forecast import (
@@ -23,6 +24,7 @@ from fastapi.responses import StreamingResponse
 from services.ai_summarizer import AiSummaryService
 from services.file_handler import FileHandler
 from services.demand_engine import DemandPlanningEngine
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,10 @@ AI_SUMMARY_FALLBACK_MODELS = [
 file_handler = FileHandler()
 demand_engine = DemandPlanningEngine()
 _ai_summary_service: Optional[AiSummaryService] = None
+
+
+class AiSummaryRequest(BaseModel):
+    product_id: str
 
 
 def get_ai_summary_service() -> Optional[AiSummaryService]:
@@ -380,6 +386,92 @@ async def export_forecast_csv(
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
+
+@router.post("/forecast/{job_id}/ai-summary")
+async def generate_ai_summary(job_id: str, req: AiSummaryRequest):
+    """Generate an AI summary for a single SKU on-demand and persist it on the job."""
+    summarizer = get_ai_summary_service()
+    if not summarizer:
+        raise HTTPException(
+            status_code=503,
+            detail="AI summaries are disabled or misconfigured on the server.",
+        )
+
+    job_data = _load_job(job_id)
+    status = job_data.get("status")
+    if status != JobStatus.COMPLETED.value:
+        raise HTTPException(status_code=400, detail="Job must be completed before requesting an AI summary.")
+
+    results = job_data.get("results") or []
+    target_index = None
+    target = None
+    for idx, item in enumerate(results):
+        product_id = item.get("product_id") or item.get("product_name")
+        if str(product_id) == str(req.product_id):
+            target_index = idx
+            target = item
+            break
+
+    if target is None or target_index is None:
+        raise HTTPException(status_code=404, detail="SKU not found on this job.")
+
+    insights = []
+    for insight in target.get("insights") or []:
+        if isinstance(insight, dict):
+            message = insight.get("message")
+            if message:
+                insights.append(message)
+        elif isinstance(insight, str):
+            insights.append(insight)
+
+    mode_value = target.get("mode") or job_data.get("mode")
+    if isinstance(mode_value, Enum):
+        mode_value = mode_value.value
+
+    payload = {
+        "sku": target.get("product_id") or target.get("product_name"),
+        "mode": mode_value,
+        "horizon": job_data.get("config", {}).get("horizon"),
+        "stockout_date": target.get("stockout_date"),
+        "reorder_point": target.get("reorder_point"),
+        "reorder_date": target.get("reorder_date"),
+        "recommended_order_qty": target.get("recommended_order_qty"),
+        "safety_stock": target.get("safety_stock"),
+        "service_level": target.get("service_level"),
+        "insights": insights,
+    }
+
+    try:
+        ai_summary = summarizer.summarize(job_id, payload)
+    except Exception as err:  # pragma: no cover - defensive
+        logger.warning(
+            "Unable to generate AI summary for job %s sku %s: %s",
+            job_id,
+            payload.get("sku"),
+            err,
+        )
+        raise HTTPException(status_code=502, detail="AI summary provider unavailable.")
+
+    serialized = {
+        "product_id": target.get("product_id"),
+        "product_name": target.get("product_name"),
+        "ai_summary": ai_summary.summary,
+        "ai_actions": ai_summary.actions,
+        "ai_risks": ai_summary.risks,
+        "ai_source": ai_summary.source,
+        "ai_generated_at": ai_summary.generated_at.isoformat(),
+    }
+
+    # Persist back to the job file
+    target.update(serialized)
+    results[target_index] = target
+    job_data["results"] = results
+    job_file = JOBS_DIR / f"{job_id}.json"
+    with job_file.open("w") as f:
+        json.dump(job_data, f, default=str)
+
+    return serialized
+
 async def process_forecast_job(job_id: str):
     """Background task to process forecast job"""
     job_file = JOBS_DIR / f"{job_id}.json"
@@ -426,74 +518,6 @@ async def process_forecast_job(job_id: str):
             and artifacts.validation.detected_frequency != job.config.frequency
         ):
             job.config.frequency = artifacts.validation.detected_frequency
-
-        summarizer = get_ai_summary_service()
-        if summarizer and results:
-            allow_ai = True
-            if job.config and job.config.enable_ai_summary is not None:
-                allow_ai = job.config.enable_ai_summary
-
-            if not allow_ai:
-                logger.info(
-                    "Skipping AI summary for job %s due to config flag (enable_ai_summary=%s)",
-                    job.jobId,
-                    job.config.enable_ai_summary if job.config else None,
-                )
-                summarizer = None
-        elif not summarizer:
-            logger.info(
-                "AI summarizer unavailable for job %s (env_enabled=%s, token_present=%s)",
-                job.jobId,
-                ENABLE_AI_SUMMARY,
-                bool(HF_API_TOKEN),
-            )
-
-        if summarizer and results:
-            for result in results:
-                insights = []
-                if getattr(result, "insights", None):
-                    for insight in result.insights:
-                        message = getattr(insight, "message", None)
-                        if message:
-                            insights.append(message)
-
-                mode_value = None
-                if hasattr(result, "mode") and result.mode is not None:
-                    mode_value = (
-                        result.mode.value if hasattr(result.mode, "value") else result.mode
-                    )
-                elif job.mode:
-                    mode_value = job.mode.value if hasattr(job.mode, "value") else job.mode
-
-                payload = {
-                    "sku": getattr(result, "product_id", None)
-                    or getattr(result, "product_name", None),
-                    "mode": mode_value,
-                    "horizon": job.config.horizon if job.config else None,
-                    "stockout_date": getattr(result, "stockout_date", None),
-                    "reorder_point": getattr(result, "reorder_point", None),
-                    "reorder_date": getattr(result, "reorder_date", None),
-                    "recommended_order_qty": getattr(result, "recommended_order_qty", None),
-                    "safety_stock": getattr(result, "safety_stock", None),
-                    "service_level": getattr(result, "service_level", None),
-                    "insights": insights,
-                }
-                try:
-                    ai_summary = summarizer.summarize(job.jobId, payload)
-                except Exception as err:  # pragma: no cover - defensive
-                    logger.warning(
-                        "Unable to generate AI summary for job %s sku %s: %s",
-                        job.jobId,
-                        payload.get("sku"),
-                        err,
-                    )
-                    continue
-
-                result.ai_summary = ai_summary.summary
-                result.ai_actions = ai_summary.actions
-                result.ai_risks = ai_summary.risks
-                result.ai_source = ai_summary.source
-                result.ai_generated_at = ai_summary.generated_at
 
         # Update job with results
         job.status = JobStatus.COMPLETED
